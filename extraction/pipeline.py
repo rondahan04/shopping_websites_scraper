@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from extraction.firecrawl_extract import extract_with_firecrawl, fetch_html_firecrawl
+from extraction.firecrawl_extract import extract_with_firecrawl
 from extraction.llm_extract import extract_with_llm
 from extraction.playwright_extract import extract_with_playwright
 from extraction.scrapling_extract import extract_with_scrapling
@@ -64,17 +64,11 @@ def run_extraction_pipeline(
             last_error = str(e)
             logger.info("%s M3 failed: %s", adapter.display_name, e)
 
-    # Method 4: Firecrawl
+    # Method 4: Firecrawl (no raw HTML returned here; use SERP snapshot or Firecrawl logs if needed)
     try:
         fields = extract_with_firecrawl(product_url)
         row = ProductRow.from_fields(adapter.display_name, fields, ExtractionMethod.FIRECRAWL)
-        if not capture_product_html:
-            return row, None
-        try:
-            snap = fetch_html_firecrawl(product_url)
-        except ExtractionFailure:
-            snap = ""
-        return row, snap or None
+        return row, None
     except ExtractionFailure as e:
         last_error = str(e)
         logger.info("%s M4 failed: %s", adapter.display_name, e)
