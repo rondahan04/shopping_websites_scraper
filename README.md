@@ -11,8 +11,10 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 playwright install chromium
-cp .env.example .env   # OPENAI_API_KEY; optional FIRECRAWL_API_KEY
+cp .env.example .env   # OPENAI_API_KEY; optional FIRECRAWL_API_KEY; optional QA_STAGING_URL (see docs/QA.md)
 ```
+
+See **[docs/QA.md](docs/QA.md)** for gstack browse (Node Playwright + `bun` PATH), CI, and staging URL when you add a UI.
 
 Uses **GPT-5.5** by default for LLM extraction (`OPENAI_MODEL` override supported).
 
@@ -28,6 +30,21 @@ python main.py   # prompts for query
 Output columns: `Website | Product title | Price | Average rating | Review count | Status | Method`
 
 Exit code `0` if ≥3 sites succeed; `2` otherwise.
+
+### Debug: save HTML
+
+```bash
+python main.py "Lenovo Tab P12" --save-html ./html_debug
+```
+
+Writes per-site `*_serp.html` (search page) and `*_product.html` (product page when available). See `docs/QA.md`.
+
+## QA & CI
+
+- **Full checklist:** [docs/QA.md](docs/QA.md) — pytest vs Playwright (Python) vs gstack browse (Node), `bun` on `PATH`, staging URL when you add a UI.
+- **One-shot verify:** `npm run qa:verify` or `bash scripts/verify-qa.sh` (pytest + Chromium launch smoke test).
+
+GitHub Actions runs the same tests and installs Chromium on push/PR under `shopping_websites_scraper/`.
 
 ## Tests
 

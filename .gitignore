@@ -68,5 +68,8 @@ htmlcov/
 # Playwright browsers (local install)
 .playwright-browsers/
 
+# Local HTML dumps from `python main.py ... --save-html ./html_debug`
+html_debug/
+
 # Misc
 *.local
