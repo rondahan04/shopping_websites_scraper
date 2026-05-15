@@ -17,10 +17,18 @@ def test_pipeline_succeeds_on_m1():
         review_count=None,
     )
 
-    with patch("extraction.pipeline.extract_with_scrapling", return_value=fields):
-        row = run_extraction_pipeline(adapter, "https://www.amazon.com/dp/B0TEST")
+    with patch(
+        "extraction.pipeline.extract_with_scrapling",
+        return_value=(fields, "<html>m1</html>"),
+    ):
+        row, html = run_extraction_pipeline(
+            adapter,
+            "https://www.amazon.com/dp/B0TEST",
+            capture_product_html=True,
+        )
 
     assert row.status == "Success"
+    assert html == "<html>m1</html>"
     assert row.method == ExtractionMethod.SCRAPLING.value
     assert row.price == "$499.99"
     assert row.average_rating == "N/A"
@@ -39,7 +47,8 @@ def test_pipeline_falls_through_to_m2():
         patch("extraction.pipeline.extract_with_scrapling", side_effect=ExtractionFailure("blocked")),
         patch("extraction.pipeline.extract_with_playwright", return_value=(fields, "<html/>")),
     ):
-        row = run_extraction_pipeline(adapter, "https://www.amazon.com/dp/B0TEST")
+        row, html = run_extraction_pipeline(adapter, "https://www.amazon.com/dp/B0TEST")
 
     assert row.status == "Success"
+    assert html is None
     assert row.method == ExtractionMethod.PLAYWRIGHT.value
