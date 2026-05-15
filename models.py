@@ -43,6 +43,8 @@ class ProductRow:
     review_count: str = "N/A"
     status: Status = "Failed"
     method: str = "N/A"
+    # Product PDP URL where title/price/ratings were extracted.
+    source_url: str = "N/A"
     serp_html_path: str | None = None
     product_html_path: str | None = None
 
@@ -56,6 +58,8 @@ class ProductRow:
         website: str,
         fields: ProductFields,
         method: ExtractionMethod,
+        *,
+        source_url: str,
     ) -> ProductRow:
         price_str = "N/A"
         if fields.price is not None:
@@ -77,6 +81,7 @@ class ProductRow:
             review_count=reviews_str,
             status="Success",
             method=method.value,
+            source_url=source_url,
         )
 
 

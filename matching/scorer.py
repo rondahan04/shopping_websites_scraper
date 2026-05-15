@@ -64,11 +64,12 @@ def pick_best_match(
         candidates.append(MatchCandidate(result=r, score=score, details=details))
 
     if not candidates:
-        # Fallback: score all without hard filters
+        qn_static = normalize_text(query)
         for r in results:
-            qn = normalize_text(query)
             tn = normalize_text(r.title)
-            wratio = fuzz.WRatio(qn.normalized, tn.normalized)
+            if has_accessory_conflict(qn_static, tn) or has_year_conflict(qn_static, tn):
+                continue
+            wratio = fuzz.WRatio(qn_static.normalized, tn.normalized)
             candidates.append(
                 MatchCandidate(result=r, score=wratio, details={"fallback": True})
             )
@@ -78,7 +79,15 @@ def pick_best_match(
         return None, []
 
     best = candidates[0]
-    if best.score < SETTINGS.min_match_score:
-        return None, candidates
+    if best.score >= SETTINGS.min_match_score:
+        return best.result, candidates
 
-    return best.result, candidates
+    # Firecrawl / noisy SERPs often land just under the hard cutoff while still being the right SKU row.
+    if (
+        best.score >= SETTINGS.min_match_score_soft_floor
+        and not best.details.get("fallback")
+        and float(best.details.get("model_recall", 0.0)) >= 55.0
+    ):
+        return best.result, candidates
+
+    return None, candidates

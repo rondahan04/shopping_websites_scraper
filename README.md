@@ -31,6 +31,8 @@ Output columns: `Website | Product title | Price | Average rating | Review count
 
 Exit code `0` if ≥3 sites succeed; `2` otherwise.
 
+After the first parallel scrape, the CLI **compares successful prices** to their **arithmetic mean**. Any site whose price differs by **more than 30%** from that mean is **rescraped once** with the same query (fresh SERP + product pipeline). Disable with **`--no-price-gap-rescrape`**. Tune with env: `PRICE_GAP_RESCRAPE_THRESHOLD` (default `0.30`), `PRICE_GAP_MIN_PRICED_SITES` (default `2`), `PRICE_GAP_RESCRAPE=false` to turn off globally.
+
 ### Debug: save HTML
 
 ```bash
@@ -43,6 +45,7 @@ Writes per-site `*_serp.html` (search page) and `*_product.html` (product page w
 
 - **Full checklist:** [docs/QA.md](docs/QA.md) — pytest vs Playwright (Python) vs gstack browse (Node), `bun` on `PATH`, staging URL when you add a UI.
 - **One-shot verify:** `npm run qa:verify` or `bash scripts/verify-qa.sh` (pytest + Chromium launch smoke test).
+- **Two-product CLI smoke (MacBook + Lenovo Tab):** `bash scripts/run-two-product-qa.sh` — see [docs/QA.md § gstack-qa](docs/QA.md#gstack-qa-and-this-cli-two-product-queries); add `--save-html` for HTML dumps.
 
 GitHub Actions runs the same tests and installs Chromium on push/PR under `shopping_websites_scraper/`.
 

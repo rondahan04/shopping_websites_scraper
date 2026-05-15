@@ -12,13 +12,30 @@ from sites.base import SiteAdapter
 from utils.parsing import parse_price, parse_rating, parse_review_count, visible_text
 from validation.fields import validate_product_fields
 
+
+def _normalize_serp_candidate_url(url: str) -> str:
+    """Upgrade common http retail links so ``is_product_url`` and domain checks succeed."""
+    u = url.strip()
+    for host in ("www.bestbuy.com", "www.newegg.com", "www.amazon.com", "www.walmart.com"):
+        prefix = f"http://{host}"
+        if u.startswith(prefix):
+            return f"https://{host}" + u[len(prefix) :]
+    return u
+
 SCHEMA_PROMPT = """Extract product data from this e-commerce page text.
 Return ONLY valid JSON with keys: title (string), price (number or null), average_rating (number 0-5 or null), review_count (integer or null).
 Use null for missing fields. Price should be numeric USD without currency symbol."""
 
 SERP_PROMPT = """Extract organic product search results from this e-commerce search results page.
 Return ONLY valid JSON: {"results": [{"title": "...", "url": "..."}, ...]}
-Include up to 10 organic product listings (skip ads/sponsored). URLs must be absolute https URLs."""
+Include up to 10 organic product listings (skip ads/sponsored). URLs must be absolute https URLs.
+
+Store-specific product URL rules (invalid URLs will be discarded):
+- Amazon.com: https://www.amazon.com/dp/ASINHERE/... or /gp/product/ASINHERE
+- BestBuy.com: https://www.bestbuy.com/site/<slug>/<digits>.p — the path MUST include a 6+ digit SKU and usually ends with .p before ? (example: .../6534606.p). ``https://bestbuy.com/...`` without ``www`` is valid.
+- Walmart.com: https://www.walmart.com/ip/<slug>/<itemId>
+- Newegg.com: https://www.newegg.com/p/<segment>/... (product /p/ URLs, not /p/pl search pages) or Product.aspx?Item=...
+"""
 
 
 def extract_with_llm(html: str, url: str) -> ProductFields:
@@ -113,6 +130,7 @@ def parse_serp_with_llm(html: str, search_url: str, adapter: SiteAdapter) -> lis
             continue
         title = str(item.get("title") or "").strip()
         url = str(item.get("url") or "").strip()
+        url = _normalize_serp_candidate_url(url)
         if not title or not url.startswith("http"):
             continue
         if not adapter.is_product_url(url):

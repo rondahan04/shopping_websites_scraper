@@ -27,6 +27,17 @@ def test_pick_best_match_selects_correct_product():
     assert "P12" in match.title
 
 
+def test_keyboard_case_combo_filtered_when_query_is_device_only():
+    query = "Lenovo Tab P12-2024"
+    bad_title = (
+        "BONAEVER Case with Trackpad Keyboard for Lenovo Tab P12 "
+        "12.7 inch 2023 2024 / Lenovo Tab Extreme"
+    )
+    score, details = score_title(query, bad_title)
+    assert score == 0.0
+    assert details.get("filtered") == "accessory"
+
+
 def test_pick_best_match_returns_none_below_threshold():
     query = "Lenovo Tab P12-2024"
     results = [
@@ -35,3 +46,17 @@ def test_pick_best_match_returns_none_below_threshold():
     match, candidates = pick_best_match(query, results)
     assert match is None
     assert candidates
+
+
+def test_pick_best_fallback_does_not_pick_case_only_listing():
+    query = "Lenovo Tab P12-2024"
+    results = [
+        SearchResult(
+            title="WERLEO Case for Lenovo Tab P12 12.7 inch 2024 2023 TB370FU TB371FC",
+            url="https://newegg.com/case/1",
+            rank=1,
+        ),
+    ]
+    match, candidates = pick_best_match(query, results)
+    assert match is None
+    assert candidates == []

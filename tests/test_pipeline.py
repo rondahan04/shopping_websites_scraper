@@ -32,6 +32,7 @@ def test_pipeline_succeeds_on_m1():
     assert row.method == ExtractionMethod.SCRAPLING.value
     assert row.price == "$499.99"
     assert row.average_rating == "N/A"
+    assert row.source_url == "https://www.amazon.com/dp/B0TEST"
 
 
 def test_pipeline_falls_through_to_m2():
@@ -52,3 +53,4 @@ def test_pipeline_falls_through_to_m2():
     assert row.status == "Success"
     assert html is None
     assert row.method == ExtractionMethod.PLAYWRIGHT.value
+    assert row.source_url == "https://www.amazon.com/dp/B0TEST"

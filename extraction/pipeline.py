@@ -27,7 +27,9 @@ def run_extraction_pipeline(
     # Method 1: Scrapling + BeautifulSoup
     try:
         fields, html = extract_with_scrapling(adapter, product_url)
-        row = ProductRow.from_fields(adapter.display_name, fields, ExtractionMethod.SCRAPLING)
+        row = ProductRow.from_fields(
+            adapter.display_name, fields, ExtractionMethod.SCRAPLING, source_url=product_url
+        )
         return row, html if capture_product_html else None
     except ExtractionFailure as e:
         last_error = str(e)
@@ -37,7 +39,9 @@ def run_extraction_pipeline(
     try:
         fields, html = extract_with_playwright(adapter, product_url)
         cached_html = html
-        row = ProductRow.from_fields(adapter.display_name, fields, ExtractionMethod.PLAYWRIGHT)
+        row = ProductRow.from_fields(
+            adapter.display_name, fields, ExtractionMethod.PLAYWRIGHT, source_url=product_url
+        )
         return row, html if capture_product_html else None
     except ExtractionFailure as e:
         last_error = str(e)
@@ -47,7 +51,9 @@ def run_extraction_pipeline(
     if cached_html:
         try:
             fields = extract_with_llm(cached_html, product_url)
-            row = ProductRow.from_fields(adapter.display_name, fields, ExtractionMethod.LLM)
+            row = ProductRow.from_fields(
+                adapter.display_name, fields, ExtractionMethod.LLM, source_url=product_url
+            )
             return row, cached_html if capture_product_html else None
         except ExtractionFailure as e:
             last_error = str(e)
@@ -58,7 +64,9 @@ def run_extraction_pipeline(
 
             cached_html = fetch_html_playwright(product_url)
             fields = extract_with_llm(cached_html, product_url)
-            row = ProductRow.from_fields(adapter.display_name, fields, ExtractionMethod.LLM)
+            row = ProductRow.from_fields(
+                adapter.display_name, fields, ExtractionMethod.LLM, source_url=product_url
+            )
             return row, cached_html if capture_product_html else None
         except ExtractionFailure as e:
             last_error = str(e)
@@ -67,7 +75,9 @@ def run_extraction_pipeline(
     # Method 4: Firecrawl (no raw HTML returned here; use SERP snapshot or Firecrawl logs if needed)
     try:
         fields = extract_with_firecrawl(product_url)
-        row = ProductRow.from_fields(adapter.display_name, fields, ExtractionMethod.FIRECRAWL)
+        row = ProductRow.from_fields(
+            adapter.display_name, fields, ExtractionMethod.FIRECRAWL, source_url=product_url
+        )
         return row, None
     except ExtractionFailure as e:
         last_error = str(e)

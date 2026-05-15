@@ -31,6 +31,8 @@ class Settings:
     product_timeout_s: float = 30.0
     playwright_timeout_ms: int = 35_000
     min_match_score: float = 48.0
+    # When the best SERP row is slightly below min_match_score but model tokens align, still accept.
+    min_match_score_soft_floor: float = 42.0
     ambiguity_delta: float = 5.0
     max_serp_results: int = 15
     llm_max_chars: int = 20_000
@@ -39,14 +41,40 @@ class Settings:
     firecrawl_api_key: str | None = None
     firecrawl_api_url: str = "https://api.firecrawl.dev/v1/scrape"
     max_workers: int = 4
+    # After all sites return: mean of successful prices; rescrape sites farther than this (e.g. 0.30 = 30%).
+    price_gap_rescrape_threshold: float = 0.30
+    price_gap_min_priced_sites: int = 2
+    price_gap_rescrape_enabled: bool = True
 
     @classmethod
     def from_env(cls) -> Settings:
         firecrawl_key = os.getenv("FIRECRAWL_API_KEY") or os.getenv("FIRECRAWL_APY_KEY")
+        t_raw = os.getenv("PRICE_GAP_RESCRAPE_THRESHOLD", "").strip()
+        try:
+            price_gap_threshold = float(t_raw) if t_raw else 0.30
+        except ValueError:
+            price_gap_threshold = 0.30
+        min_sites_raw = os.getenv("PRICE_GAP_MIN_PRICED_SITES", "2").strip()
+        try:
+            min_priced = max(2, int(min_sites_raw))
+        except ValueError:
+            min_priced = 2
+        rescrape_env = os.getenv("PRICE_GAP_RESCRAPE", "true").strip().lower()
+        rescrape_on = rescrape_env not in ("0", "false", "no", "off")
+        soft_raw = os.getenv("MIN_MATCH_SCORE_SOFT_FLOOR", "").strip()
+        try:
+            soft_floor = float(soft_raw) if soft_raw else 42.0
+        except ValueError:
+            soft_floor = 42.0
+        soft_floor = min(soft_floor, 47.9)  # must stay strictly below min_match_score default
         return cls(
             openai_api_key=os.getenv("OPENAI_API_KEY"),
             firecrawl_api_key=firecrawl_key,
             openai_model=os.getenv("OPENAI_MODEL", "gpt-5.5"),
+            price_gap_rescrape_threshold=price_gap_threshold,
+            price_gap_min_priced_sites=min_priced,
+            price_gap_rescrape_enabled=rescrape_on,
+            min_match_score_soft_floor=soft_floor,
         )
 
 

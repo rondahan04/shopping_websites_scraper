@@ -14,7 +14,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from extraction.playwright_extract import shutdown_browser  # noqa: E402
-from orchestrator import run_all_sites  # noqa: E402
+from orchestrator import rescrape_price_gap_outliers, run_all_sites  # noqa: E402
 from output.table import print_results_table  # noqa: E402
 from utils.html_debug import set_html_debug_dir  # noqa: E402
 
@@ -40,6 +40,11 @@ def main() -> int:
         metavar="DIR",
         help="Write per-site SERP and product HTML under DIR (e.g. ./debug_html) for debugging parsers",
     )
+    parser.add_argument(
+        "--no-price-gap-rescrape",
+        action="store_true",
+        help="Disable second pass: rescrape sites whose price is >30%% (configurable) from the mean of successful prices",
+    )
     args = parser.parse_args()
 
     query = args.query
@@ -58,6 +63,7 @@ def main() -> int:
         if args.save_html:
             set_html_debug_dir(args.save_html)
         rows = run_all_sites(query)
+        rows = rescrape_price_gap_outliers(rows, query, enabled=not args.no_price_gap_rescrape)
         print_results_table(rows)
         success = sum(1 for r in rows if r.status == "Success")
         return 0 if success >= 3 else 2

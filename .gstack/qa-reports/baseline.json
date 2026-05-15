@@ -1,8 +1,16 @@
 {
   "date": "2026-05-15",
-  "url": "none-cli-project",
-  "healthScore": null,
-  "note": "Browse not executed; health score not computed",
+  "url": "https://example.com",
+  "healthScore": 96,
   "issues": [],
-  "categoryScores": {}
+  "categoryScores": {
+    "console": 100,
+    "links": 100,
+    "visual": 100,
+    "functional": 100,
+    "ux": 90,
+    "performance": 100,
+    "content": 90
+  },
+  "note": "External Quick smoke; CLI app has no owned web surface"
 }
