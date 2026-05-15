@@ -38,11 +38,11 @@ PYTHONPATH=. pytest tests/ -q
 
 ## Extraction fallback (per site)
 
-**Search page:** requests → Playwright → LLM SERP parse → Firecrawl HTML
+**Search page:** Scrapling → Playwright → LLM SERP parse → Firecrawl HTML
 
 **Product page:**
 
-1. **requests** + BeautifulSoup  
+1. **Scrapling** (`Fetcher`, TLS impersonation + stealth headers) + BeautifulSoup — no Scrapling browser in M1 so thread-pool workers stay compatible with Playwright M2  
 2. **Playwright** (headless)  
 3. **LLM** (OpenAI JSON parse from page text)  
 4. **Firecrawl** API  

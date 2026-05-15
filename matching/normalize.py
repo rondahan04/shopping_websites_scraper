@@ -28,18 +28,24 @@ STOPWORDS = frozenset(
     }
 )
 
-ACCESSORY_KEYWORDS = frozenset(
-    {
-        "case",
-        "cover",
-        "screen protector",
-        "charger only",
-        "cable only",
-        "mount",
-        "stand only",
-        "replacement part",
-        "tempered glass",
-    }
+# Phrases only — avoid matching "case" inside "in case you…" etc.
+ACCESSORY_SUBSTRINGS: tuple[str, ...] = (
+    "phone case",
+    "tablet case",
+    "keyboard case",
+    "charging case",
+    "protective case",
+    "screen protector",
+    "tempered glass",
+    "charger only",
+    "cable only",
+    "replacement part",
+    "tv mount",
+    "dash mount",
+    "monitor mount",
+    "tripod mount",
+    "desk mount",
+    "stand only",
 )
 
 BUNDLE_KEYWORDS = frozenset({"bundle", "2-pack", "3-pack", "combo", "+ keyboard", "with keyboard"})
@@ -92,8 +98,8 @@ def normalize_text(text: str) -> NormalizedText:
 def has_accessory_conflict(query_norm: NormalizedText, title_norm: NormalizedText) -> bool:
     title_lower = title_norm.normalized
     query_lower = query_norm.normalized
-    for kw in ACCESSORY_KEYWORDS:
-        if kw in title_lower and kw not in query_lower:
+    for phrase in ACCESSORY_SUBSTRINGS:
+        if phrase in title_lower and phrase not in query_lower:
             return True
     return False
 

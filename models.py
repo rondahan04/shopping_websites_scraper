@@ -9,7 +9,7 @@ from typing import Literal
 
 
 class ExtractionMethod(str, Enum):
-    REQUESTS = "requests"
+    SCRAPLING = "scrapling"
     PLAYWRIGHT = "playwright"
     LLM = "llm"
     FIRECRAWL = "firecrawl"
@@ -43,6 +43,8 @@ class ProductRow:
     review_count: str = "N/A"
     status: Status = "Failed"
     method: str = "N/A"
+    serp_html_path: str | None = None
+    product_html_path: str | None = None
 
     @classmethod
     def failed(cls, website: str) -> ProductRow:

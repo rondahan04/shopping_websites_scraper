@@ -26,11 +26,26 @@ class NeweggAdapter(SiteAdapter):
         soup = BeautifulSoup(html, "lxml")
         results: list[SearchResult] = []
         rank = 0
+        seen_urls: set[str] = set()
 
-        for row in soup.select(".item-cell, .list-wrap .item-container"):
-            if "sponsored" in (row.get("class") or []):
+        for row in soup.select(
+            ".item-cell, "
+            ".list-wrap .item-container, "
+            "div.item-container:not(.combo-item-cell), "
+            "tr[class*='item'], "
+            "div.cell-inner"
+        ):
+            classes = row.get("class") or []
+            cls = " ".join(classes).lower()
+            if "sponsored" in cls or row.select_one("[class*='sponsored'], .combo-item-cell"):
                 continue
-            link = row.select_one("a.item-title, .item-info a")
+            link = row.select_one(
+                "a.item-title, "
+                "a[class*='itemTitle'], "
+                ".item-info > a.item-title, "
+                "a[itemprop='url'], "
+                ".item-info a.btn-link"
+            )
             if not link:
                 continue
             title = link.get_text(strip=True)
@@ -40,10 +55,31 @@ class NeweggAdapter(SiteAdapter):
             url = absolute_url(base_url, href).split("?")[0]
             if not self.is_product_url(url) and "/p/" not in url:
                 continue
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
             rank += 1
             results.append(SearchResult(title=title, url=url, rank=rank))
             if rank >= SETTINGS.max_serp_results:
                 break
+
+        if not results:
+            for a in soup.select('a[href*="/p/"], a[href*="Item="]'):
+                title = a.get_text(strip=True)
+                href = a.get("href", "")
+                if len(title) < 8:
+                    continue
+                url = absolute_url(base_url, href).split("?")[0]
+                if not self.is_product_url(url):
+                    continue
+                if url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                rank += 1
+                results.append(SearchResult(title=title, url=url, rank=rank))
+                if rank >= SETTINGS.max_serp_results:
+                    break
+
         return results
 
     def parse_product(self, html: str, url: str) -> ProductFields:

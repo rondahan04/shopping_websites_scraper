@@ -34,7 +34,6 @@ def extract_with_llm(html: str, url: str) -> ProductFields:
         client = OpenAI(api_key=SETTINGS.openai_api_key)
         response = client.chat.completions.create(
             model=SETTINGS.openai_model,
-            temperature=0,
             messages=[
                 {"role": "system", "content": SCHEMA_PROMPT},
                 {
@@ -94,7 +93,6 @@ def parse_serp_with_llm(html: str, search_url: str, adapter: SiteAdapter) -> lis
         client = OpenAI(api_key=SETTINGS.openai_api_key)
         response = client.chat.completions.create(
             model=SETTINGS.openai_model,
-            temperature=0,
             messages=[
                 {"role": "system", "content": SERP_PROMPT},
                 {

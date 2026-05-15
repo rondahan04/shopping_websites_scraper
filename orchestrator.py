@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 def _scrape_and_cleanup(adapter: SiteAdapter, query: str) -> ProductRow:
     """Scrape one site and tear down thread-local Playwright resources."""
     from extraction.playwright_extract import shutdown_browser
-    from utils.http_client import close_http_client
+    from utils.scrapling_fetch import close_scrapling_session
 
     try:
         return scrape_site(adapter, query)
@@ -27,7 +27,7 @@ def _scrape_and_cleanup(adapter: SiteAdapter, query: str) -> ProductRow:
         except Exception:
             pass
         try:
-            close_http_client()
+            close_scrapling_session()
         except Exception:
             pass
 

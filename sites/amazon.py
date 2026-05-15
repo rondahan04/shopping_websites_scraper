@@ -33,10 +33,20 @@ class AmazonAdapter(SiteAdapter):
         results: list[SearchResult] = []
         rank = 0
 
-        for card in soup.select('[data-component-type="s-search-result"]'):
-            if card.select_one('[data-component-type="sp-sponsored-result"]'):
+        for card in soup.select(
+            '[data-component-type="s-search-result"], '
+            'div.s-result-item[data-asin], '
+            'div[role="listitem"][data-asin]'
+        ):
+            if card.select_one(
+                '[data-component-type="sp-sponsored-result"], '
+                ".puis-sponsored-label-text, "
+                "[aria-label*='Sponsored']"
+            ):
                 continue
-            h2 = card.select_one("h2 a, h2 span a")
+            h2 = card.select_one(
+                "h2 a, h2 span a, a.a-link-normal[href*='/dp/'], span[data-cy='title-recipe'] a"
+            )
             if not h2:
                 continue
             title = h2.get_text(strip=True)

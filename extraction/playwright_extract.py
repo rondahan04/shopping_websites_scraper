@@ -18,8 +18,15 @@ def _get_browser_context() -> tuple[Any, Any, Any]:
     if getattr(_thread_local, "browser", None) is None:
         from playwright.sync_api import sync_playwright
 
-        pw = sync_playwright().start()
-        browser = pw.chromium.launch(headless=True)
+        try:
+            pw = sync_playwright().start()
+            browser = pw.chromium.launch(headless=True)
+        except Exception as e:
+            msg = (
+                "playwright launch failed — run `cd shopping_websites_scraper && "
+                "playwright install chromium` (or unset PLAYWRIGHT_BROWSERS_PATH to use default)."
+            )
+            raise ExtractionFailure(f"{msg} ({e})", ExtractionMethod.PLAYWRIGHT) from e
         _thread_local.playwright = pw
         _thread_local.browser = browser
     return _thread_local.playwright, _thread_local.browser

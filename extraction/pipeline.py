@@ -4,24 +4,31 @@ from __future__ import annotations
 
 import logging
 
-from extraction.firecrawl_extract import extract_with_firecrawl
+from extraction.firecrawl_extract import extract_with_firecrawl, fetch_html_firecrawl
 from extraction.llm_extract import extract_with_llm
 from extraction.playwright_extract import extract_with_playwright
-from extraction.requests_bs4 import extract_with_requests
+from extraction.scrapling_extract import extract_with_scrapling
 from models import ExtractionFailure, ExtractionMethod, ProductFields, ProductRow
 from sites.base import SiteAdapter
 
 logger = logging.getLogger(__name__)
 
 
-def run_extraction_pipeline(adapter: SiteAdapter, product_url: str) -> ProductRow:
+def run_extraction_pipeline(
+    adapter: SiteAdapter,
+    product_url: str,
+    *,
+    capture_product_html: bool = False,
+) -> tuple[ProductRow, str | None]:
+    """Return ``(row, product_html)``; ``product_html`` is set when extraction succeeds and capture is on."""
     last_error = "unknown"
     cached_html: str | None = None
 
-    # Method 1: requests + BeautifulSoup
+    # Method 1: Scrapling + BeautifulSoup
     try:
-        fields = extract_with_requests(adapter, product_url)
-        return ProductRow.from_fields(adapter.display_name, fields, ExtractionMethod.REQUESTS)
+        fields, html = extract_with_scrapling(adapter, product_url)
+        row = ProductRow.from_fields(adapter.display_name, fields, ExtractionMethod.SCRAPLING)
+        return row, html if capture_product_html else None
     except ExtractionFailure as e:
         last_error = str(e)
         logger.info("%s M1 failed: %s", adapter.display_name, e)
@@ -30,7 +37,8 @@ def run_extraction_pipeline(adapter: SiteAdapter, product_url: str) -> ProductRo
     try:
         fields, html = extract_with_playwright(adapter, product_url)
         cached_html = html
-        return ProductRow.from_fields(adapter.display_name, fields, ExtractionMethod.PLAYWRIGHT)
+        row = ProductRow.from_fields(adapter.display_name, fields, ExtractionMethod.PLAYWRIGHT)
+        return row, html if capture_product_html else None
     except ExtractionFailure as e:
         last_error = str(e)
         logger.info("%s M2 failed: %s", adapter.display_name, e)
@@ -39,7 +47,8 @@ def run_extraction_pipeline(adapter: SiteAdapter, product_url: str) -> ProductRo
     if cached_html:
         try:
             fields = extract_with_llm(cached_html, product_url)
-            return ProductRow.from_fields(adapter.display_name, fields, ExtractionMethod.LLM)
+            row = ProductRow.from_fields(adapter.display_name, fields, ExtractionMethod.LLM)
+            return row, cached_html if capture_product_html else None
         except ExtractionFailure as e:
             last_error = str(e)
             logger.info("%s M3 failed: %s", adapter.display_name, e)
@@ -49,7 +58,8 @@ def run_extraction_pipeline(adapter: SiteAdapter, product_url: str) -> ProductRo
 
             cached_html = fetch_html_playwright(product_url)
             fields = extract_with_llm(cached_html, product_url)
-            return ProductRow.from_fields(adapter.display_name, fields, ExtractionMethod.LLM)
+            row = ProductRow.from_fields(adapter.display_name, fields, ExtractionMethod.LLM)
+            return row, cached_html if capture_product_html else None
         except ExtractionFailure as e:
             last_error = str(e)
             logger.info("%s M3 failed: %s", adapter.display_name, e)
@@ -57,11 +67,18 @@ def run_extraction_pipeline(adapter: SiteAdapter, product_url: str) -> ProductRo
     # Method 4: Firecrawl
     try:
         fields = extract_with_firecrawl(product_url)
-        return ProductRow.from_fields(adapter.display_name, fields, ExtractionMethod.FIRECRAWL)
+        row = ProductRow.from_fields(adapter.display_name, fields, ExtractionMethod.FIRECRAWL)
+        if not capture_product_html:
+            return row, None
+        try:
+            snap = fetch_html_firecrawl(product_url)
+        except ExtractionFailure:
+            snap = ""
+        return row, snap or None
     except ExtractionFailure as e:
         last_error = str(e)
         logger.info("%s M4 failed: %s", adapter.display_name, e)
 
     row = ProductRow.failed(adapter.display_name)
     logger.warning("%s all methods failed: %s", adapter.display_name, last_error)
-    return row
+    return row, None

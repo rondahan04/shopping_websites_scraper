@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from bs4 import BeautifulSoup
 
 from config import SETTINGS
@@ -25,10 +27,42 @@ class BestBuyAdapter(SiteAdapter):
         results: list[SearchResult] = []
         rank = 0
 
-        for item in soup.select("li.sku-item, .sku-item"):
+        selectors = (
+            "li.sku-item",
+            "div.sku-item",
+            "[data-test-id='sku-item-wrapper']",
+            "[data-testid='shop-product-card-wrapper']",
+            ".sku-item-wrapper",
+            "[data-test-id='sku-list-item-wrapper']",
+        )
+
+        containers: list[Any] = []
+        seen_ctr: set[int] = set()
+        for sel in selectors:
+            for el in soup.select(sel):
+                ctr_id = id(el)
+                if ctr_id not in seen_ctr:
+                    seen_ctr.add(ctr_id)
+                    containers.append(el)
+
+        link_selectors = (
+            "h4.sku-title a",
+            ".sku-title a",
+            "a[data-testid='product-title']",
+            "a[data-testid='product-overview-link']",
+            "div.sku-title a",
+            "h4[class*='sku-title'] a",
+        )
+
+        seen_urls: set[str] = set()
+        for item in containers:
             if item.select_one(".sponsored, [data-testid*='sponsor']"):
                 continue
-            link = item.select_one("h4.sku-title a, a[data-testid='product-title']")
+            link = None
+            for ls in link_selectors:
+                link = item.select_one(ls)
+                if link:
+                    break
             if not link:
                 continue
             title = link.get_text(strip=True)
@@ -38,10 +72,39 @@ class BestBuyAdapter(SiteAdapter):
             url = absolute_url(base_url, href)
             if not self.is_product_url(url):
                 continue
+            canon = url.split("?")[0]
+            if canon in seen_urls:
+                continue
+            seen_urls.add(canon)
             rank += 1
-            results.append(SearchResult(title=title, url=url.split("?")[0], rank=rank))
+            results.append(SearchResult(title=title, url=canon, rank=rank))
             if rank >= SETTINGS.max_serp_results:
                 break
+
+        if results:
+            return results
+
+        for a in soup.select('a[href*="/site/"]'):
+            href = a.get("href", "")
+            if "/site/" not in href:
+                continue
+            if ".p" not in href and "skuId=" not in href:
+                continue
+            title = a.get_text(strip=True)
+            if len(title) < 10:
+                continue
+            url = absolute_url(base_url, href)
+            if not self.is_product_url(url):
+                continue
+            canon = url.split("?")[0]
+            if canon in seen_urls:
+                continue
+            seen_urls.add(canon)
+            rank += 1
+            results.append(SearchResult(title=title, url=canon, rank=rank))
+            if rank >= SETTINGS.max_serp_results:
+                break
+
         return results
 
     def parse_product(self, html: str, url: str) -> ProductFields:

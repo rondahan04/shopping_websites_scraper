@@ -30,7 +30,7 @@ class Settings:
     search_timeout_s: float = 20.0
     product_timeout_s: float = 30.0
     playwright_timeout_ms: int = 35_000
-    min_match_score: float = 55.0
+    min_match_score: float = 48.0
     ambiguity_delta: float = 5.0
     max_serp_results: int = 15
     llm_max_chars: int = 20_000
