@@ -1,0 +1,14 @@
+# Core scraping (versions checked PyPI 2026-05-15)
+beautifulsoup4>=4.14.3
+httpx>=0.28.1
+lxml>=6.1.0
+playwright>=1.59.0
+rapidfuzz>=3.14.5
+tabulate>=0.10.0
+python-dotenv>=1.2.2
+
+# OpenAI SDK (GPT-5.5 and latest Chat Completions / Responses API)
+openai>=2.36.0
+
+# Tests
+pytest>=8.0.0

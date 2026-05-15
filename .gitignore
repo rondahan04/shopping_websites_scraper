@@ -1,0 +1,72 @@
+# AI assistants & IDE agent config (local — do not commit)
+.cursor/
+.cursorrules
+.cursorignore
+.claude/
+.factory/
+.opencode/
+.kiro/
+.hermes/
+.openclaw/
+.gbrain/
+.slate/
+.continue/
+.windsurf/
+.aider*
+AGENTS.md
+agents.md
+CLAUDE.md
+GEMINI.md
+.cursor/rules/
+
+# Environment & secrets
+.env
+.env.*
+.env.example
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS & editors
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+
+# Logs & caches
+*.log
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+coverage/
+htmlcov/
+
+# Playwright browsers (local install)
+.playwright-browsers/
+
+# Misc
+*.local
