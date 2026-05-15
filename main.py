@@ -16,6 +16,7 @@ if str(_ROOT) not in sys.path:
 from extraction.playwright_extract import shutdown_browser  # noqa: E402
 from orchestrator import run_all_sites  # noqa: E402
 from output.table import print_results_table  # noqa: E402
+from utils.html_debug import set_html_debug_dir  # noqa: E402
 
 
 def main() -> int:
@@ -33,6 +34,12 @@ def main() -> int:
         action="store_true",
         help="Suppress info logs",
     )
+    parser.add_argument(
+        "--save-html",
+        type=Path,
+        metavar="DIR",
+        help="Write per-site SERP and product HTML under DIR (e.g. ./debug_html) for debugging parsers",
+    )
     args = parser.parse_args()
 
     query = args.query
@@ -48,11 +55,14 @@ def main() -> int:
     )
 
     try:
+        if args.save_html:
+            set_html_debug_dir(args.save_html)
         rows = run_all_sites(query)
         print_results_table(rows)
         success = sum(1 for r in rows if r.status == "Success")
         return 0 if success >= 3 else 2
     finally:
+        set_html_debug_dir(None)
         try:
             shutdown_browser()
         except Exception:

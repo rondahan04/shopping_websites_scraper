@@ -33,6 +33,17 @@ def print_results_table(rows: list[ProductRow]) -> None:
     success = sum(1 for r in rows if r.status == "Success")
     print(f"\nSucceeded: {success}/{len(rows)} (target: at least 3 of 4)")
 
+    debug_rows = [r for r in rows if r.serp_html_path or r.product_html_path]
+    if debug_rows:
+        print("\nSaved HTML (--save-html):")
+        for r in debug_rows:
+            parts = [r.website]
+            if r.serp_html_path:
+                parts.append(f"SERP: {r.serp_html_path}")
+            if r.product_html_path:
+                parts.append(f"product: {r.product_html_path}")
+            print("  " + " | ".join(parts))
+
 
 def _truncate(text: str, max_len: int) -> str:
     text = text.replace("\n", " ").strip()
