@@ -8,6 +8,7 @@ from config import SETTINGS
 from matching.normalize import (
     bundle_penalty,
     has_accessory_conflict,
+    has_chip_generation_mismatch,
     has_model_code_mismatch,
     has_year_conflict,
     model_token_recall,
@@ -25,6 +26,8 @@ def score_title(query: str, title: str) -> tuple[float, dict]:
         return 0.0, {"filtered": "accessory"}
     if has_model_code_mismatch(qn, tn):
         return 0.0, {"filtered": "model_code"}
+    if has_chip_generation_mismatch(qn, tn):
+        return 0.0, {"filtered": "chip_generation"}
     if has_year_conflict(qn, tn):
         return 0.0, {"filtered": "year"}
 

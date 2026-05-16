@@ -12,21 +12,32 @@ from extraction.pipeline import run_extraction_pipeline
 from extraction.search_fetch import fetch_search_results
 from extraction.serp_fallback import (
     enriched_search_queries,
+    firecrawl_extract_serp,
     google_site_search_discover,
     pdp_fallback_candidates,
 )
 from matching.normalize import (
     DEVICE_QUERY_MARKERS,
     has_accessory_conflict,
+    has_chip_generation_mismatch,
     has_model_code_mismatch,
     normalize_text,
 )
 from matching.scorer import pick_best_match
-from models import ExtractionFailure, ExtractionMethod, MatchCandidate, ProductFields, ProductRow, SearchResult
+from models import (
+    ExtractionFailure,
+    ExtractionMethod,
+    MatchCandidate,
+    ProductFields,
+    ProductRow,
+    SearchResult,
+    row_has_scraped_price,
+)
 from sites.amazon import amazon_heading_conflicts_with_ram_module_slug
 from sites.base import SiteAdapter
 from utils.amazon_resolve import amazon_resolved_product_path
 from utils.html_debug import get_html_debug_dir, write_site_html
+from utils.pdp_url import pdp_url_reachable
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +77,7 @@ def _listing_model_mismatch(query: str, title: str, url: str = "") -> bool:
     """PDP title must carry query model codes (URL path alone is not enough)."""
     qn = normalize_text(query)
     tn = normalize_text(title)
-    return has_model_code_mismatch(qn, tn)
+    return has_model_code_mismatch(qn, tn) or has_chip_generation_mismatch(qn, tn)
 
 
 def _pick_valid_match(
@@ -74,8 +85,15 @@ def _pick_valid_match(
     candidates: list[MatchCandidate],
     adapter: SiteAdapter,
 ) -> SearchResult | None:
-    for cand in candidates:
+    for cand in sorted(candidates, key=lambda c: c.score, reverse=True):
         r = cand.result
+        if not pdp_url_reachable(r.url):
+            logger.info(
+                "[%s] Skipping candidate (PDP not reachable): %s",
+                adapter.display_name,
+                r.url[:100],
+            )
+            continue
         if _listing_model_mismatch(query, r.title, r.url):
             continue
         if has_accessory_conflict(normalize_text(query), normalize_text(r.title)):
@@ -84,6 +102,56 @@ def _pick_valid_match(
             continue
         return r
     return None
+
+
+def _accept_discovered_match(
+    adapter: SiteAdapter,
+    candidate: SearchResult | None,
+    query: str,
+) -> SearchResult | None:
+    """Reject hallucinated Google/Firecrawl PDP URLs (404, search echo titles)."""
+    if candidate is None:
+        return None
+    if not pdp_url_reachable(candidate.url):
+        return None
+    qn = normalize_text(query).normalized
+    tn = normalize_text(candidate.title).normalized
+    if tn == qn or (len(tn) > 40 and tn in qn):
+        logger.info(
+            "[%s] Skipping discovery result (title echoes query): %s",
+            adapter.display_name,
+            candidate.title[:72],
+        )
+        return None
+    if _listing_model_mismatch(query, candidate.title, candidate.url):
+        return None
+    if has_accessory_conflict(normalize_text(query), normalize_text(candidate.title)):
+        return None
+    return candidate
+
+
+def _try_firecrawl_extract_match(
+    adapter: SiteAdapter,
+    search_url: str,
+    query: str,
+) -> tuple[SearchResult | None, list[MatchCandidate]]:
+    extracted = firecrawl_extract_serp(adapter, search_url, query)
+    if not extracted:
+        return None, []
+    extracted = _drop_accessory_serp_rows(query, extracted)
+    if not extracted:
+        return None, []
+    logger.info(
+        "[%s] SERP via firecrawl extract (match retry) (%d results)",
+        adapter.display_name,
+        len(extracted),
+    )
+    match, candidates = pick_best_match(query, extracted)
+    if candidates:
+        match = _pick_valid_match(query, candidates, adapter)
+    elif match and not pdp_url_reachable(match.url):
+        match = None
+    return match, candidates
 
 
 def _amazon_pick_safe_match(candidates: list[MatchCandidate]) -> SearchResult | None:
@@ -140,7 +208,9 @@ def scrape_site(adapter: SiteAdapter, query: str) -> ProductRow:
                     len(results),
                 )
             else:
-                discovered = google_site_search_discover(adapter, query)
+                discovered = _accept_discovered_match(
+                    adapter, google_site_search_discover(adapter, query), query
+                )
                 if discovered:
                     results = [discovered]
                     logger.info("[%s] Using google site-search PDP discovery", adapter.display_name)
@@ -188,6 +258,17 @@ def scrape_site(adapter: SiteAdapter, query: str) -> ProductRow:
                     if adapter.domain == "amazon.com" and candidates and match is None:
                         match = _amazon_pick_safe_match(candidates)
         if not match:
+            match, candidates = _try_firecrawl_extract_match(adapter, search_url, query)
+
+        if match and not pdp_url_reachable(match.url):
+            logger.info(
+                "[%s] Discarding match: PDP URL not reachable (%s)",
+                adapter.display_name,
+                match.url[:100],
+            )
+            match = None
+
+        if not match:
             fb = pdp_fallback_candidates(adapter, query)
             if fb:
                 logger.info(
@@ -196,11 +277,13 @@ def scrape_site(adapter: SiteAdapter, query: str) -> ProductRow:
                     len(fb),
                 )
                 match = _pick_valid_match(query, [MatchCandidate(r, 100.0, {}) for r in fb], adapter)
-                if not match and fb:
+                if not match and fb and pdp_url_reachable(fb[0].url):
                     match = fb[0]
                 candidates = [MatchCandidate(r, 100.0, {}) for r in fb]
             if not match:
-                discovered = google_site_search_discover(adapter, query)
+                discovered = _accept_discovered_match(
+                    adapter, google_site_search_discover(adapter, query), query
+                )
                 if discovered:
                     match = discovered
             if not match:
@@ -260,19 +343,22 @@ def scrape_site(adapter: SiteAdapter, query: str) -> ProductRow:
             if serp_path:
                 row = replace(row, serp_html_path=serp_path)
 
-        if row.status != "Success" and match and _is_known_fallback_pdp(
+        if not row_has_scraped_price(row) and match and _is_known_fallback_pdp(
             adapter, query, match.url
         ):
-            logger.info(
-                "[%s] Recovering via known PDP fallback title (OOS or bot-blocked PDP)",
+            logger.warning(
+                "[%s] Known PDP fallback matched but price not extracted — marking Failed",
                 adapter.display_name,
             )
-            fields = ProductFields(title=match.title, price=None, average_rating=None, review_count=None)
-            row = ProductRow.from_fields(
-                adapter.display_name,
-                fields,
-                ExtractionMethod.FIRECRAWL,
+            row = replace(
+                row,
+                website=adapter.display_name,
+                product_title=match.title,
                 source_url=match.url,
+                status="Failed",
+                price="N/A",
+                average_rating="N/A",
+                review_count="N/A",
             )
             if serp_path or prod_path:
                 row = replace(
@@ -280,6 +366,12 @@ def scrape_site(adapter: SiteAdapter, query: str) -> ProductRow:
                     serp_html_path=serp_path or row.serp_html_path,
                     product_html_path=prod_path or row.product_html_path,
                 )
+        elif not row_has_scraped_price(row) and row.status == "Success":
+            logger.warning(
+                "[%s] No price on PDP — marking Failed (Success requires scraped price)",
+                adapter.display_name,
+            )
+            row = replace(row, status="Failed")
         return row
     except Exception as e:
         logger.exception("[%s] Unexpected error: %s", adapter.display_name, e)

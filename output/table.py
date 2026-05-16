@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from models import ProductRow
+from models import ProductRow, row_has_scraped_price
 from tabulate import tabulate
 
 COLUMNS = [
@@ -32,8 +32,8 @@ def print_results_table(rows: list[ProductRow]) -> None:
         for r in rows
     ]
     print(tabulate(table_rows, headers=COLUMNS, tablefmt="simple"))
-    success = sum(1 for r in rows if r.status == "Success")
-    print(f"\nSucceeded: {success}/{len(rows)} (target: at least 3 of 4)")
+    success = sum(1 for r in rows if row_has_scraped_price(r))
+    print(f"\nSucceeded: {success}/{len(rows)} (target: at least 3 of 4; requires scraped price)")
 
     debug_rows = [r for r in rows if r.serp_html_path or r.product_html_path]
     if debug_rows:

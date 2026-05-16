@@ -47,17 +47,25 @@ def shutdown_browser() -> None:
     _thread_local.playwright = None
 
 
+def _playwright_proxy(proxy_url: str | None) -> dict[str, str] | None:
+    if not proxy_url:
+        return None
+    return {"server": proxy_url}
+
+
 def fetch_html_playwright(
     url: str,
     timeout_ms: int | None = None,
     *,
     strict_bot_check: bool = True,
+    proxy_url: str | None = None,
 ) -> str:
     timeout_ms = timeout_ms or SETTINGS.playwright_timeout_ms
     _, browser = _get_browser_context()
     context = browser.new_context(
         user_agent=SETTINGS.user_agent,
         locale="en-US",
+        proxy=_playwright_proxy(proxy_url),
     )
     page = context.new_page()
     try:
@@ -80,8 +88,13 @@ def fetch_html_playwright(
     return html
 
 
-def extract_with_playwright(adapter: SiteAdapter, url: str) -> tuple[ProductFields, str]:
-    html = fetch_html_playwright(url)
+def extract_with_playwright(
+    adapter: SiteAdapter,
+    url: str,
+    *,
+    proxy_url: str | None = None,
+) -> tuple[ProductFields, str]:
+    html = fetch_html_playwright(url, proxy_url=proxy_url)
     if is_bot_page(html, adapter.bot_check_patterns()):
         raise ExtractionFailure("bot protection detected", ExtractionMethod.PLAYWRIGHT)
     fields = adapter.parse_product(html, url)

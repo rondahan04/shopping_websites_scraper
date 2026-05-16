@@ -193,6 +193,23 @@ def has_accessory_conflict(query_norm: NormalizedText, title_norm: NormalizedTex
     return False
 
 
+def has_chip_generation_mismatch(query_norm: NormalizedText, title_norm: NormalizedText) -> bool:
+    """Reject listings with an older Apple Silicon generation than the query (e.g. M1 vs M5)."""
+    q_chips = [int(m.group(1)) for m in re.finditer(r"\bm([1-9])\b", query_norm.normalized, re.I)]
+    if not q_chips:
+        return False
+    q_target = max(q_chips)
+    t_chips = [int(m.group(1)) for m in re.finditer(r"\bm([1-9])\b", title_norm.normalized, re.I)]
+    if not t_chips:
+        return False
+    if max(t_chips) < q_target:
+        return True
+    # "M1-M5 (2021-2022)" case/cover listings span below the requested chip.
+    if len(t_chips) >= 2 and min(t_chips) < q_target:
+        return True
+    return False
+
+
 def has_model_code_mismatch(query_norm: NormalizedText, title_norm: NormalizedText) -> bool:
     """Require alphanumeric model codes from the query (e.g. p12) in the listing text.
 

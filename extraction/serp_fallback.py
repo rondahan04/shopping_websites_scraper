@@ -141,17 +141,19 @@ def pdp_fallback_candidates(adapter: SiteAdapter, query: str) -> list[SearchResu
                 rank=1,
             )
         )
+    # Skip M1 Max refurb fallback when the query targets a newer chip (e.g. M5).
     if adapter.domain == "newegg.com" and re.search(r"macbook\s+pro", norm, re.I):
-        out.append(
-            SearchResult(
-                title=(
-                    "Refurbished Apple MacBook Pro (2021) 14-inch - Apple M1 Max chip: "
-                    "10-Core CPU/32-Core GPU - 2TB - Space Grey - 64GB RAM"
-                ),
-                url="https://www.newegg.com/apple-14-space-grey/p/2SN-0001-03GV5",
-                rank=1,
+        if not re.search(r"\bm[5-9]\b", norm, re.I):
+            out.append(
+                SearchResult(
+                    title=(
+                        "Refurbished Apple MacBook Pro (2021) 14-inch - Apple M1 Max chip: "
+                        "10-Core CPU/32-Core GPU - 2TB - Space Grey - 64GB RAM"
+                    ),
+                    url="https://www.newegg.com/apple-14-space-grey/p/2SN-0001-03GV5",
+                    rank=1,
+                )
             )
-        )
 
     return out
 

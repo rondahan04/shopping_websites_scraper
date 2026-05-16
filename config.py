@@ -45,6 +45,9 @@ class Settings:
     price_gap_rescrape_threshold: float = 0.30
     price_gap_min_priced_sites: int = 2
     price_gap_rescrape_enabled: bool = True
+    # HTTP(S) proxy with US egress — retried when price is missing (geo-blocked PDPs).
+    usa_http_proxy: str | None = None
+    usa_geo_retry_enabled: bool = True
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -67,6 +70,14 @@ class Settings:
         except ValueError:
             soft_floor = 42.0
         soft_floor = min(soft_floor, 47.9)  # must stay strictly below min_match_score default
+        usa_proxy = (
+            os.getenv("USA_HTTP_PROXY")
+            or os.getenv("US_HTTP_PROXY")
+            or os.getenv("USA_PROXY_URL")
+            or ""
+        ).strip() or None
+        usa_retry_env = os.getenv("USA_GEO_RETRY", "true").strip().lower()
+        usa_retry_on = usa_retry_env not in ("0", "false", "no", "off")
         return cls(
             openai_api_key=os.getenv("OPENAI_API_KEY"),
             firecrawl_api_key=firecrawl_key,
@@ -75,6 +86,8 @@ class Settings:
             price_gap_min_priced_sites=min_priced,
             price_gap_rescrape_enabled=rescrape_on,
             min_match_score_soft_floor=soft_floor,
+            usa_http_proxy=usa_proxy,
+            usa_geo_retry_enabled=usa_retry_on,
         )
 
 

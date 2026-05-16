@@ -11,7 +11,7 @@ from extraction.serp_fallback import firecrawl_extract_serp
 from extraction.playwright_extract import fetch_html_playwright
 from models import ExtractionFailure, SearchResult
 from sites.base import SiteAdapter
-from utils.scrapling_fetch import fetch_html_scrapling
+from utils.http_fetch import fetch_html_http
 from validation.fields import is_bot_page
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ def fetch_search_results(
     *,
     query: str = "",
 ) -> tuple[list[SearchResult], str | None]:
-    """Fetch search HTML and parse results using Scrapling → Playwright → LLM → Firecrawl.
+    """Fetch search HTML and parse results using HTTP → Playwright → LLM → Firecrawl.
 
     Returns ``(results, serp_html)`` where ``serp_html`` is the document that produced
     ``results`` when non-empty; otherwise the last HTML fetched for forensics (may be a
@@ -51,9 +51,9 @@ def fetch_search_results(
     last_fetched: str | None = None
     results: list[SearchResult] = []
 
-    # M1: Scrapling
+    # M1: HTTP (httpx) + BeautifulSoup
     try:
-        html, _ = fetch_html_scrapling(
+        html, _ = fetch_html_http(
             search_url,
             timeout=SETTINGS.search_timeout_s,
             extra_patterns=patterns,
@@ -61,7 +61,7 @@ def fetch_search_results(
         last_fetched = html
         results = _parse_serp(adapter, html, search_url)
         if results:
-            logger.info("[%s] SERP via scrapling (%d results)", adapter.display_name, len(results))
+            logger.info("[%s] SERP via http (%d results)", adapter.display_name, len(results))
             return results, html
         cached_html = html
     except ExtractionFailure as e:

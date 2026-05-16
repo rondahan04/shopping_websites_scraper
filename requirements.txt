@@ -11,5 +11,10 @@ python-dotenv>=1.2.2
 # OpenAI SDK (GPT-5.5 and latest Chat Completions / Responses API)
 openai>=2.36.0
 
+# HTTP API
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+pydantic>=2.10.0
+
 # Tests
 pytest>=8.0.0

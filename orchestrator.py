@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from decimal import Decimal
 
 from config import SETTINGS
-from models import ProductRow
+from models import ProductRow, row_has_scraped_price
 from site_runner import scrape_site
 from sites import ALL_ADAPTERS
 from sites.base import SiteAdapter
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 def _scrape_and_cleanup(adapter: SiteAdapter, query: str) -> ProductRow:
     """Scrape one site and tear down thread-local Playwright resources."""
     from extraction.playwright_extract import shutdown_browser
-    from utils.scrapling_fetch import close_scrapling_session
+    from utils.http_fetch import close_http_session
 
     try:
         return scrape_site(adapter, query)
@@ -29,12 +30,20 @@ def _scrape_and_cleanup(adapter: SiteAdapter, query: str) -> ProductRow:
         except Exception:
             pass
         try:
-            close_scrapling_session()
+            close_http_session()
         except Exception:
             pass
 
 
-def run_all_sites(query: str) -> list[ProductRow]:
+SiteFinishedFn = Callable[[str, ProductRow], None]
+RecheckBeginFn = Callable[[list[str]], None]
+
+
+def run_all_sites(
+    query: str,
+    *,
+    on_site_finished: SiteFinishedFn | None = None,
+) -> list[ProductRow]:
     rows: list[ProductRow] = []
     with ThreadPoolExecutor(max_workers=SETTINGS.max_workers) as pool:
         futures = {
@@ -49,6 +58,8 @@ def run_all_sites(query: str) -> list[ProductRow]:
                 logger.exception("[%s] Worker failed: %s", adapter.display_name, e)
                 row = ProductRow.failed(adapter.display_name)
             rows.append(row)
+            if on_site_finished:
+                on_site_finished(adapter.display_name, row)
 
     # Stable column order matching site list
     order = {a.display_name: i for i, a in enumerate(ALL_ADAPTERS)}
@@ -61,6 +72,8 @@ def rescrape_price_gap_outliers(
     query: str,
     *,
     enabled: bool | None = None,
+    on_recheck_begin: RecheckBeginFn | None = None,
+    on_recheck_site: SiteFinishedFn | None = None,
 ) -> list[ProductRow]:
     """Re-run scrape for sites whose successful price deviates more than ``threshold`` from the mean.
 
@@ -74,7 +87,7 @@ def rescrape_price_gap_outliers(
     by_website = {a.display_name: a for a in ALL_ADAPTERS}
     priced: list[tuple[int, Decimal]] = []
     for i, r in enumerate(rows):
-        if r.status != "Success":
+        if not row_has_scraped_price(r):
             continue
         p = parse_price(r.price)
         if p is not None and p > 0:
@@ -115,10 +128,16 @@ def rescrape_price_gap_outliers(
         ", ".join(sites),
     )
 
+    if on_recheck_begin:
+        on_recheck_begin(sites)
+
     new_rows = list(rows)
     for i in outlier_indices:
         adapter = by_website.get(new_rows[i].website)
         if adapter is None:
             continue
-        new_rows[i] = _scrape_and_cleanup(adapter, query)
+        row = _scrape_and_cleanup(adapter, query)
+        new_rows[i] = row
+        if on_recheck_site:
+            on_recheck_site(adapter.display_name, row)
     return new_rows
