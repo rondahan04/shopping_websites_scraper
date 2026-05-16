@@ -10,17 +10,8 @@ from config import SETTINGS
 from models import ExtractionFailure, ExtractionMethod, ProductFields, SearchResult
 from sites.base import SiteAdapter
 from utils.parsing import parse_price, parse_rating, parse_review_count, visible_text
+from utils.serp_urls import coerce_serp_product_url
 from validation.fields import validate_product_fields
-
-
-def _normalize_serp_candidate_url(url: str) -> str:
-    """Upgrade common http retail links so ``is_product_url`` and domain checks succeed."""
-    u = url.strip()
-    for host in ("www.bestbuy.com", "www.newegg.com", "www.amazon.com", "www.walmart.com"):
-        prefix = f"http://{host}"
-        if u.startswith(prefix):
-            return f"https://{host}" + u[len(prefix) :]
-    return u
 
 SCHEMA_PROMPT = """Extract product data from this e-commerce page text.
 Return ONLY valid JSON with keys: title (string), price (number or null), average_rating (number 0-5 or null), review_count (integer or null).
@@ -29,6 +20,7 @@ Use null for missing fields. Price should be numeric USD without currency symbol
 SERP_PROMPT = """Extract organic product search results from this e-commerce search results page.
 Return ONLY valid JSON: {"results": [{"title": "...", "url": "..."}, ...]}
 Include up to 10 organic product listings (skip ads/sponsored). URLs must be absolute https URLs.
+Prefer listings whose title matches the exact model in the search query (e.g. Tab P12 not Tab Plus; M5 not M4).
 
 Store-specific product URL rules (invalid URLs will be discarded):
 - Amazon.com: https://www.amazon.com/dp/ASINHERE/... or /gp/product/ASINHERE
@@ -130,14 +122,28 @@ def parse_serp_with_llm(html: str, search_url: str, adapter: SiteAdapter) -> lis
             continue
         title = str(item.get("title") or "").strip()
         url = str(item.get("url") or "").strip()
-        url = _normalize_serp_candidate_url(url)
+        url = coerce_serp_product_url(url, adapter, search_url=search_url)
         if not title or not url.startswith("http"):
             continue
         if not adapter.is_product_url(url):
             continue
-        results.append(SearchResult(title=title, url=url.split("?")[0], rank=idx))
+        canon = url.split("#")[0]
+        if adapter.domain == "newegg.com" and "Item=" in canon:
+            pass
+        elif "?" in url and adapter.domain != "newegg.com":
+            canon = canon.split("?")[0]
+        results.append(SearchResult(title=title, url=canon, rank=idx))
         if idx >= SETTINGS.max_serp_results:
             break
+    if not results:
+        if adapter.domain == "bestbuy.com":
+            from sites.bestbuy import salvage_bestbuy_serp_links
+
+            results = salvage_bestbuy_serp_links(html, search_url)
+        elif adapter.domain == "newegg.com":
+            from sites.newegg import salvage_newegg_serp_links
+
+            results = salvage_newegg_serp_links(html, search_url)
     if not results:
         raise ExtractionFailure("llm returned no valid serp results", ExtractionMethod.LLM)
     return results

@@ -25,7 +25,7 @@ def print_results_table(rows: list[ProductRow]) -> None:
             r.price,
             r.average_rating,
             r.review_count,
-            _truncate(r.source_url, 72),
+            r.source_url,
             r.status,
             r.method,
         ]

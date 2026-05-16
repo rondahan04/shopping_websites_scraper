@@ -11,8 +11,8 @@ PRICE_ZERO = Decimal("0")
 MAX_RATING = 5.0
 
 
-def validate_product_fields(fields: ProductFields) -> None:
-    """Require title + price; rating/reviews are best-effort when present."""
+def validate_product_fields(fields: ProductFields, *, require_price: bool = True) -> None:
+    """Require title; price required unless ``require_price=False`` (e.g. out-of-stock PDP)."""
     if not fields.title or len(fields.title.strip()) < 3:
         raise ExtractionFailure("missing or too-short title")
 
@@ -26,10 +26,11 @@ def validate_product_fields(fields: ProductFields) -> None:
     if fields.title.strip().lower() in generic_titles:
         raise ExtractionFailure("generic page title")
 
-    if fields.price is None:
-        raise ExtractionFailure("missing price")
-    if fields.price <= PRICE_ZERO:
-        raise ExtractionFailure(f"nonsensical price: {fields.price}")
+    if require_price:
+        if fields.price is None:
+            raise ExtractionFailure("missing price")
+        if fields.price <= PRICE_ZERO:
+            raise ExtractionFailure(f"nonsensical price: {fields.price}")
 
     if fields.average_rating is not None:
         if fields.average_rating < 0 or fields.average_rating > MAX_RATING:

@@ -30,6 +30,12 @@ STOPWORDS = frozenset(
 
 # Phrases only — avoid matching "case" inside "in case you…" etc.
 ACCESSORY_SUBSTRINGS: tuple[str, ...] = (
+    "laptop bag",
+    "laptop briefcase",
+    "briefcase",
+    "notebook bag",
+    "shoulder bag",
+    "carrying case",
     "case for",
     "cover for",
     "folio for",
@@ -58,6 +64,30 @@ ACCESSORY_SUBSTRINGS: tuple[str, ...] = (
 
 BUNDLE_KEYWORDS = frozenset({"bundle", "2-pack", "3-pack", "combo", "+ keyboard", "with keyboard"})
 
+DEVICE_QUERY_MARKERS: tuple[str, ...] = (
+    "macbook",
+    "laptop",
+    "notebook",
+    "tablet",
+    "ipad",
+    "chromebook",
+    "surface pro",
+    "surface laptop",
+)
+
+PERIPHERAL_ACCESSORY_MARKERS: tuple[str, ...] = (
+    "charger",
+    "power adapter",
+    "usb-c adapter",
+    "usb c adapter",
+    "charging cable",
+    "charging adapter",
+    "replacement battery",
+    "docking station",
+    "usb c hub",
+    "hub adapter",
+)
+
 ALIAS_REPLACEMENTS = [
     (r"\bgb\b", "gigabyte"),
     (r"\btb\b", "terabyte"),
@@ -67,7 +97,7 @@ ALIAS_REPLACEMENTS = [
 ]
 
 MODEL_TOKEN_RE = re.compile(
-    r"\b(?:[a-z]{1,3}\d{2,5}|\d{4}|[a-z]+\d+[a-z]*\d*)\b",
+    r"\b(?:[a-z]{1,3}\d{2,5}|\d{4}|[a-z]+\d+[a-z]*\d*|m[1-9])\b",
     re.I,
 )
 
@@ -103,9 +133,53 @@ def normalize_text(text: str) -> NormalizedText:
     )
 
 
+def has_peripheral_accessory_conflict(query_norm: NormalizedText, title_norm: NormalizedText) -> bool:
+    """Chargers/adapters for device queries (e.g. 'MacBook Air Charger' when searching for a MacBook)."""
+    q = query_norm.normalized
+    t = title_norm.normalized
+    if not any(m in q for m in DEVICE_QUERY_MARKERS):
+        return False
+    if not any(m in t for m in PERIPHERAL_ACCESSORY_MARKERS):
+        return False
+    if re.search(r"^(refurbished\s+)?apple\s+macbook\s+(pro|air)\b", t):
+        return False
+    product_part = t.split("compatible with", 1)[0][:140]
+    if not any(m in product_part for m in PERIPHERAL_ACCESSORY_MARKERS):
+        return False
+    if re.search(r"\bmacbook\s+(air|pro)\s+charger\b", product_part):
+        return True
+    if re.search(r"\b(charger|power adapter|charging adapter)\b", product_part):
+        if re.search(r"\b\d{1,2}\s*inch\b", product_part) and re.search(
+            r"\b(\d+\s*gb|\d+\s*tb|ssd|m[1-9]\s+chip)\b",
+            product_part,
+        ):
+            return False
+        return True
+    if re.search(r"\b(usb c hub|docking station|hub adapter)\b", product_part):
+        if not re.search(r"^(refurbished\s+)?apple\s+macbook", product_part):
+            return True
+    return False
+
+
 def has_accessory_conflict(query_norm: NormalizedText, title_norm: NormalizedText) -> bool:
+    if has_peripheral_accessory_conflict(query_norm, title_norm):
+        return True
     title_lower = title_norm.normalized
     query_lower = query_norm.normalized
+    if any(m in query_lower for m in DEVICE_QUERY_MARKERS) and "case" not in query_lower:
+        head = title_lower.split("compatible with", 1)[0][:140]
+        if re.search(r"\b(case|cover|folio|shell|sleeve)\b", head):
+            if not re.search(r"^(refurbished\s+)?apple\s+macbook\s+(pro|air)\b", head):
+                return True
+        if re.search(r"\b(usb c hub|docking station|hub adapter)\b", head):
+            if not re.search(r"^(refurbished\s+)?apple\s+macbook", head):
+                return True
+    if re.search(r"\bapple\s+macbook\b", query_lower) or (
+        "macbook" in query_lower and "apple" in query_lower
+    ):
+        head = title_lower.split("compatible with", 1)[0][:100]
+        if not re.search(r"\b(apple|macbook)\b", head):
+            return True
     for phrase in ACCESSORY_SUBSTRINGS:
         if phrase in title_lower and phrase not in query_lower:
             return True
@@ -117,6 +191,26 @@ def has_accessory_conflict(query_norm: NormalizedText, title_norm: NormalizedTex
     ):
         return True
     return False
+
+
+def has_model_code_mismatch(query_norm: NormalizedText, title_norm: NormalizedText) -> bool:
+    """Require alphanumeric model codes from the query (e.g. p12) in the listing text.
+
+    Apple Silicon chips (m1–m9) are excluded: SERPs often only list older gens (M1 refurb)
+    while the user asked for M5 — those are still laptops, not accessories.
+    """
+    codes = [
+        t
+        for t in query_norm.model_tokens
+        if len(t) >= 2
+        and any(ch.isdigit() for ch in t)
+        and any(ch.isalpha() for ch in t)
+        and not re.fullmatch(r"m[1-9]", t.lower())
+    ]
+    if not codes:
+        return False
+    hay = title_norm.normalized
+    return any(code.lower() not in hay for code in codes)
 
 
 def has_year_conflict(query_norm: NormalizedText, title_norm: NormalizedText) -> bool:

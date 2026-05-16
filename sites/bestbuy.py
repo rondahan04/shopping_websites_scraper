@@ -23,6 +23,8 @@ def _bestbuy_looks_like_pdp(url: str) -> bool:
     parsed = urlparse(url)
     path = parsed.path or ""
     lower_path = path.lower()
+    if "/product/" in lower_path:
+        return True
     if "/site/" not in path:
         return False
     if "searchpage.jsp" in lower_path or "/site/compare/" in lower_path:
@@ -55,10 +57,16 @@ def salvage_bestbuy_serp_links(html: str, base_url: str) -> list[SearchResult]:
         r"https://(?:www\.)?bestbuy\.com/site/[^\s\"'<>/]+/\d{6,}(?:\?[^\s\"'<>]*)?",
         r'["\'](/site/[^\s"\']+\d{6,}\.p)["\']',
         r'["\'](/site/[^\s"\']+/\d{6,})["\']',
+        r'"skuId"\s*:\s*"?(\d{6,})"?',
+        r'"productUrl"\s*:\s*"(https?://[^"]+bestbuy\.com/site/[^"]+)"',
+        r'"url"\s*:\s*"(/site/[^"]+\d{6,}[^"]*)"',
     )
     for pat in patterns:
         for m in re.finditer(pat, html, re.I):
-            raw = m.group(1) if m.lastindex else m.group(0)
+            if m.lastindex and m.group(1).isdigit() and len(m.group(1)) >= 6:
+                raw = f"/site/product/{m.group(1)}.p"
+            else:
+                raw = m.group(1) if m.lastindex else m.group(0)
             url = absolute_url(base_url, raw) if raw.startswith("/") else raw
             url = url.split('"')[0].split("#")[0].strip()
             if not _bestbuy_looks_like_pdp(url):

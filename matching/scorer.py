@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 from config import SETTINGS
 from matching.normalize import (
     bundle_penalty,
     has_accessory_conflict,
+    has_model_code_mismatch,
     has_year_conflict,
     model_token_recall,
     normalize_text,
@@ -20,6 +23,8 @@ def score_title(query: str, title: str) -> tuple[float, dict]:
 
     if has_accessory_conflict(qn, tn):
         return 0.0, {"filtered": "accessory"}
+    if has_model_code_mismatch(qn, tn):
+        return 0.0, {"filtered": "model_code"}
     if has_year_conflict(qn, tn):
         return 0.0, {"filtered": "year"}
 
@@ -58,7 +63,9 @@ def pick_best_match(
 
     candidates: list[MatchCandidate] = []
     for r in results:
-        score, details = score_title(query, r.title)
+        # Use URL path only—tracking query params often contain the search string (false p12 match).
+        path = urlparse(r.url).path if r.url else ""
+        score, details = score_title(query, f"{r.title} {path}")
         if details.get("filtered"):
             continue
         candidates.append(MatchCandidate(result=r, score=score, details=details))
@@ -66,8 +73,13 @@ def pick_best_match(
     if not candidates:
         qn_static = normalize_text(query)
         for r in results:
-            tn = normalize_text(r.title)
-            if has_accessory_conflict(qn_static, tn) or has_year_conflict(qn_static, tn):
+            path = urlparse(r.url).path if r.url else ""
+            tn = normalize_text(f"{r.title} {path}")
+            if (
+                has_accessory_conflict(qn_static, tn)
+                or has_model_code_mismatch(qn_static, tn)
+                or has_year_conflict(qn_static, tn)
+            ):
                 continue
             wratio = fuzz.WRatio(qn_static.normalized, tn.normalized)
             candidates.append(
@@ -87,6 +99,14 @@ def pick_best_match(
         best.score >= SETTINGS.min_match_score_soft_floor
         and not best.details.get("fallback")
         and float(best.details.get("model_recall", 0.0)) >= 55.0
+    ):
+        return best.result, candidates
+
+    # Salvage titles from URL slugs (Best Buy) may score low on wratio but match model tokens.
+    if (
+        not best.details.get("fallback")
+        and float(best.details.get("model_recall", 0.0)) >= 50.0
+        and float(best.details.get("token_set", 0.0)) >= 45.0
     ):
         return best.result, candidates
 

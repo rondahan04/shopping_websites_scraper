@@ -81,7 +81,7 @@ def extract_with_firecrawl(url: str) -> ProductFields:
     return fields
 
 
-def fetch_html_firecrawl(url: str) -> str:
+def fetch_html_firecrawl(url: str, *, wait_ms: int | None = None) -> str:
     """Fetch raw HTML/markdown for a URL via Firecrawl (search or product pages)."""
     if not SETTINGS.firecrawl_api_key:
         raise ExtractionFailure("FIRECRAWL_API_KEY not set", ExtractionMethod.FIRECRAWL)
@@ -90,7 +90,12 @@ def fetch_html_firecrawl(url: str) -> str:
         "Authorization": f"Bearer {SETTINGS.firecrawl_api_key}",
         "Content-Type": "application/json",
     }
-    payload = {"url": url, "formats": ["html"]}
+    payload: dict = {"url": url, "formats": ["html"]}
+    if wait_ms is not None:
+        payload["waitFor"] = wait_ms
+    elif "bestbuy.com" in url.lower():
+        # Best Buy SERP is a JS shell; allow the product grid to hydrate.
+        payload["waitFor"] = 8000
 
     try:
         with httpx.Client(timeout=60.0) as client:

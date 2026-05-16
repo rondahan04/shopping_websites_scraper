@@ -2,12 +2,104 @@
 
 from __future__ import annotations
 
+import re
+from html import unescape
+from urllib.parse import urlparse
+
 from bs4 import BeautifulSoup
 
 from config import SETTINGS
 from models import ExtractionFailure, ProductFields, SearchResult
 from sites.base import SiteAdapter
 from utils.parsing import absolute_url, is_same_domain, parse_price, parse_rating, parse_review_count
+
+_NEWEGG_ITEM_RE = re.compile(r"(?:Item=|item=)([A-Z0-9-]{6,})", re.I)
+_NEWEGG_P_SEG_RE = re.compile(r"/p/([A-Z0-9][A-Z0-9-]{3,})", re.I)
+
+
+def _newegg_product_segment(url: str) -> str | None:
+    parsed = urlparse(url)
+    path = (parsed.path or "").lower()
+    if path.endswith("/p/pl") or "/p/pl/" in path:
+        return None
+    m = _NEWEGG_P_SEG_RE.search(parsed.path or "")
+    if m:
+        seg = m.group(1).lower()
+        if seg not in ("pl", "pls"):
+            return m.group(1)
+    qs = parsed.query or ""
+    im = _NEWEGG_ITEM_RE.search(qs)
+    if im:
+        return im.group(1)
+    return None
+
+
+_NEWEGG_ACCESSORY_SLUGS = (
+    "case",
+    "keyboard",
+    "cover",
+    "folio",
+    "protector",
+    "charger",
+    "cable",
+    "mount",
+    "bag",
+    "sleeve",
+    "backpack",
+    "carrying-case",
+    "screen-protector",
+)
+
+
+def _newegg_url_looks_like_accessory(url: str) -> bool:
+    path = urlparse(url).path.lower()
+    return any(slug in path for slug in _NEWEGG_ACCESSORY_SLUGS)
+
+
+def salvage_newegg_serp_links(html: str, base_url: str) -> list[SearchResult]:
+    """Recover PDP links from Firecrawl / script-heavy SERP HTML."""
+    seen: set[str] = set()
+    out: list[SearchResult] = []
+    rank = 0
+    patterns = (
+        r"https://(?:www\.)?newegg\.com/(?:[^\s\"'<>]*?Item=[A-Z0-9-]{6,}[^\s\"'<>]*)",
+        r"https://(?:www\.)?newegg\.com/[^/\s\"'<>]+/p/[A-Z0-9][A-Z0-9-]{3,}(?:[^\s\"'<>]*)?",
+        r"https://(?:www\.)?newegg\.com/p/[A-Z0-9][A-Z0-9-]{3,}(?:/[^\s\"'<>]*)?",
+        r'["\'](/[^"\']+/p/[A-Z0-9][A-Z0-9-]{3,}[^"\']*)["\']',
+        r'["\'](/p/[A-Z0-9][A-Z0-9-]{3,}[^"\']*)["\']',
+        r'Item=([A-Z0-9-]{8,})',
+    )
+    for pat in patterns:
+        for m in re.finditer(pat, html, re.I):
+            raw = m.group(1) if m.lastindex else m.group(0)
+            if raw.startswith("Item=") or (m.lastindex and not raw.startswith("http")):
+                if raw.startswith("Item="):
+                    code = raw.split("=", 1)[1]
+                else:
+                    code = raw
+                url = f"https://www.newegg.com/Product.aspx?Item={code}"
+            elif raw.startswith("/"):
+                url = absolute_url(base_url, raw.split('"')[0])
+            else:
+                url = raw.split('"')[0].split("#")[0].strip()
+            if not is_same_domain(url, "newegg.com"):
+                continue
+            if _newegg_product_segment(url) is None:
+                continue
+            if _newegg_url_looks_like_accessory(url):
+                continue
+            canon = url.split("?")[0] if "Item=" not in url else url.split("#")[0]
+            key = canon.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            seg = _newegg_product_segment(url) or "product"
+            title = f"Newegg {seg}"
+            rank += 1
+            out.append(SearchResult(title=title, url=url.split("#")[0], rank=rank))
+            if rank >= SETTINGS.max_serp_results:
+                return out
+    return out
 
 
 class NeweggAdapter(SiteAdapter):
@@ -18,15 +110,33 @@ class NeweggAdapter(SiteAdapter):
         return f"https://www.newegg.com/p/pl?d={self.encoded_query(query)}"
 
     def is_product_url(self, url: str) -> bool:
-        return is_same_domain(url, self.domain) and (
-            "/p/" in url or "Item=" in url
-        )
+        if not is_same_domain(url, self.domain):
+            return False
+        return _newegg_product_segment(url) is not None
 
     def parse_search_results(self, html: str, base_url: str) -> list[SearchResult]:
         soup = BeautifulSoup(html, "lxml")
         results: list[SearchResult] = []
         rank = 0
         seen_urls: set[str] = set()
+
+        for a in soup.select("a.item-title[href]"):
+            title = a.get_text(strip=True)
+            href = unescape(a.get("href", ""))
+            if len(title) < 8 or not href:
+                continue
+            url = absolute_url(base_url, href).split("#")[0]
+            if "Item=" not in href:
+                url = url.split("?")[0]
+            if not self.is_product_url(url) or _newegg_url_looks_like_accessory(url):
+                continue
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+            rank += 1
+            results.append(SearchResult(title=title, url=url, rank=rank))
+            if rank >= SETTINGS.max_serp_results:
+                return results
 
         for row in soup.select(
             ".item-cell, "
@@ -49,11 +159,15 @@ class NeweggAdapter(SiteAdapter):
             if not link:
                 continue
             title = link.get_text(strip=True)
-            href = link.get("href", "")
+            href = unescape(link.get("href", ""))
             if not title or not href:
                 continue
-            url = absolute_url(base_url, href).split("?")[0]
-            if not self.is_product_url(url) and "/p/" not in url:
+            url = absolute_url(base_url, href).split("#")[0]
+            if "Item=" in href:
+                url = absolute_url(base_url, href)
+            else:
+                url = url.split("?")[0]
+            if not self.is_product_url(url):
                 continue
             if url in seen_urls:
                 continue
@@ -66,10 +180,12 @@ class NeweggAdapter(SiteAdapter):
         if not results:
             for a in soup.select('a[href*="/p/"], a[href*="Item="]'):
                 title = a.get_text(strip=True)
-                href = a.get("href", "")
+                href = unescape(a.get("href", ""))
                 if len(title) < 8:
                     continue
-                url = absolute_url(base_url, href).split("?")[0]
+                url = absolute_url(base_url, href)
+                if "Item=" not in href:
+                    url = url.split("?")[0]
                 if not self.is_product_url(url):
                     continue
                 if url in seen_urls:
@@ -79,6 +195,29 @@ class NeweggAdapter(SiteAdapter):
                 results.append(SearchResult(title=title, url=url, rank=rank))
                 if rank >= SETTINGS.max_serp_results:
                     break
+
+        if not results:
+            for a in soup.select("a.item-img[href], a[href].item-img"):
+                img = a.select_one("img[title], img[alt]")
+                if not img:
+                    continue
+                title = (img.get("title") or img.get("alt") or "").strip()
+                if len(title) < 12:
+                    continue
+                href = a.get("href", "")
+                url = absolute_url(base_url, href).split("&amp;")[0].split("#")[0]
+                if not self.is_product_url(url) or _newegg_url_looks_like_accessory(url):
+                    continue
+                if url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                rank += 1
+                results.append(SearchResult(title=title, url=url, rank=rank))
+                if rank >= SETTINGS.max_serp_results:
+                    break
+
+        if not results:
+            results = salvage_newegg_serp_links(html, base_url)
 
         return results
 

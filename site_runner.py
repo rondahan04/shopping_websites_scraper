@@ -10,8 +10,19 @@ from config import SETTINGS
 from extraction.llm_extract import parse_serp_with_llm
 from extraction.pipeline import run_extraction_pipeline
 from extraction.search_fetch import fetch_search_results
+from extraction.serp_fallback import (
+    enriched_search_queries,
+    google_site_search_discover,
+    pdp_fallback_candidates,
+)
+from matching.normalize import (
+    DEVICE_QUERY_MARKERS,
+    has_accessory_conflict,
+    has_model_code_mismatch,
+    normalize_text,
+)
 from matching.scorer import pick_best_match
-from models import ExtractionFailure, MatchCandidate, ProductRow, SearchResult
+from models import ExtractionFailure, ExtractionMethod, MatchCandidate, ProductFields, ProductRow, SearchResult
 from sites.amazon import amazon_heading_conflicts_with_ram_module_slug
 from sites.base import SiteAdapter
 from utils.amazon_resolve import amazon_resolved_product_path
@@ -26,6 +37,53 @@ def _amazon_heading_matches_ram_kit_url(candidate_url: str, title: str) -> bool:
         return True
     canon_path = amazon_resolved_product_path(candidate_url)
     return bool(canon_path and amazon_heading_conflicts_with_ram_module_slug(canon_path, title))
+
+
+def _drop_accessory_serp_rows(query: str, results: list[SearchResult]) -> list[SearchResult]:
+    qn = normalize_text(query)
+    kept = [
+        r
+        for r in results
+        if not has_accessory_conflict(qn, normalize_text(r.title))
+    ]
+    if kept:
+        return kept
+    if any(m in qn.normalized for m in DEVICE_QUERY_MARKERS):
+        return []
+    return results
+
+
+def _listing_looks_like_accessory_for_query(query: str, product_title: str) -> bool:
+    return has_accessory_conflict(normalize_text(query), normalize_text(product_title))
+
+
+def _is_known_fallback_pdp(adapter: SiteAdapter, query: str, url: str) -> bool:
+    canon = url.split("?")[0].lower()
+    return any(f.url.split("?")[0].lower() == canon for f in pdp_fallback_candidates(adapter, query))
+
+
+def _listing_model_mismatch(query: str, title: str, url: str = "") -> bool:
+    """PDP title must carry query model codes (URL path alone is not enough)."""
+    qn = normalize_text(query)
+    tn = normalize_text(title)
+    return has_model_code_mismatch(qn, tn)
+
+
+def _pick_valid_match(
+    query: str,
+    candidates: list[MatchCandidate],
+    adapter: SiteAdapter,
+) -> SearchResult | None:
+    for cand in candidates:
+        r = cand.result
+        if _listing_model_mismatch(query, r.title, r.url):
+            continue
+        if has_accessory_conflict(normalize_text(query), normalize_text(r.title)):
+            continue
+        if adapter.domain == "amazon.com" and _amazon_heading_matches_ram_kit_url(r.url, r.title):
+            continue
+        return r
+    return None
 
 
 def _amazon_pick_safe_match(candidates: list[MatchCandidate]) -> SearchResult | None:
@@ -47,9 +105,14 @@ def scrape_site(adapter: SiteAdapter, query: str) -> ProductRow:
     prod_path: str | None = None
 
     try:
-        search_url = adapter.build_search_url(query)
-        logger.info("[%s] Searching: %s", adapter.display_name, search_url)
-        results, serp_html = fetch_search_results(adapter, search_url)
+        results: list[SearchResult] = []
+        serp_html: str | None = None
+        for attempt_q in enriched_search_queries(query):
+            search_url = adapter.build_search_url(attempt_q)
+            logger.info("[%s] Searching: %s", adapter.display_name, search_url)
+            results, serp_html = fetch_search_results(adapter, search_url, query=attempt_q)
+            if results:
+                break
 
         if not results and serp_html and SETTINGS.openai_api_key:
             try:
@@ -69,16 +132,38 @@ def scrape_site(adapter: SiteAdapter, query: str) -> ProductRow:
                 logger.warning("[%s] could not write SERP html: %s", adapter.display_name, e)
 
         if not results:
+            results = pdp_fallback_candidates(adapter, query)
+            if results:
+                logger.info(
+                    "[%s] Using PDP fallback candidate (%d)",
+                    adapter.display_name,
+                    len(results),
+                )
+            else:
+                discovered = google_site_search_discover(adapter, query)
+                if discovered:
+                    results = [discovered]
+                    logger.info("[%s] Using google site-search PDP discovery", adapter.display_name)
+
+        if not results:
             logger.warning("[%s] No search results parsed", adapter.display_name)
             row = ProductRow.failed(adapter.display_name)
             if serp_path:
                 row = replace(row, serp_html_path=serp_path)
             return row
 
+        results = _drop_accessory_serp_rows(query, results)
+
         match, candidates = pick_best_match(query, results)
-        if adapter.domain == "amazon.com" and candidates:
-            safe_amazon = _amazon_pick_safe_match(candidates)
-            match = safe_amazon
+        if candidates:
+            match = _pick_valid_match(query, candidates, adapter)
+        if match and (
+            _listing_model_mismatch(query, match.title, match.url)
+            or _listing_looks_like_accessory_for_query(query, match.title)
+        ):
+            match = None
+        if adapter.domain == "amazon.com" and candidates and match is None:
+            match = _amazon_pick_safe_match(candidates)
         if not match and serp_html and SETTINGS.openai_api_key:
             try:
                 alt = parse_serp_with_llm(serp_html, search_url, adapter)
@@ -86,20 +171,44 @@ def scrape_site(adapter: SiteAdapter, query: str) -> ProductRow:
                 logger.info("[%s] SERP llm reparse after no match skipped: %s", adapter.display_name, e)
             else:
                 if alt:
+                    alt = _drop_accessory_serp_rows(query, alt)
                     logger.info(
                         "[%s] SERP via llm after no match (%d results)",
                         adapter.display_name,
                         len(alt),
                     )
                     match, candidates = pick_best_match(query, alt)
-                    if adapter.domain == "amazon.com" and candidates:
+                    if candidates:
+                        match = _pick_valid_match(query, candidates, adapter)
+                    if match and (
+                        _listing_model_mismatch(query, match.title, match.url)
+                        or _listing_looks_like_accessory_for_query(query, match.title)
+                    ):
+                        match = None
+                    if adapter.domain == "amazon.com" and candidates and match is None:
                         match = _amazon_pick_safe_match(candidates)
         if not match:
-            logger.warning("[%s] No match selected", adapter.display_name)
-            row = ProductRow.failed(adapter.display_name)
-            if serp_path:
-                row = replace(row, serp_html_path=serp_path)
-            return row
+            fb = pdp_fallback_candidates(adapter, query)
+            if fb:
+                logger.info(
+                    "[%s] Retrying match with PDP fallback (%d)",
+                    adapter.display_name,
+                    len(fb),
+                )
+                match = _pick_valid_match(query, [MatchCandidate(r, 100.0, {}) for r in fb], adapter)
+                if not match and fb:
+                    match = fb[0]
+                candidates = [MatchCandidate(r, 100.0, {}) for r in fb]
+            if not match:
+                discovered = google_site_search_discover(adapter, query)
+                if discovered:
+                    match = discovered
+            if not match:
+                logger.warning("[%s] No match selected", adapter.display_name)
+                row = ProductRow.failed(adapter.display_name)
+                if serp_path:
+                    row = replace(row, serp_html_path=serp_path)
+                return row
 
         log_score = next(
             (c.score for c in candidates if c.result.url == match.url),
@@ -128,6 +237,49 @@ def scrape_site(adapter: SiteAdapter, query: str) -> ProductRow:
                 serp_html_path=serp_path or row.serp_html_path,
                 product_html_path=prod_path or row.product_html_path,
             )
+        if row.status == "Success" and _listing_looks_like_accessory_for_query(
+            query, row.product_title
+        ):
+            logger.warning(
+                "[%s] Rejecting accessory PDP for device query: %s",
+                adapter.display_name,
+                row.product_title[:72],
+            )
+            row = ProductRow.failed(adapter.display_name)
+            if serp_path:
+                row = replace(row, serp_html_path=serp_path)
+        elif row.status == "Success" and _listing_model_mismatch(
+            query, row.product_title, match.url
+        ):
+            logger.warning(
+                "[%s] Rejecting PDP with wrong model code vs query: %s",
+                adapter.display_name,
+                row.product_title[:72],
+            )
+            row = ProductRow.failed(adapter.display_name)
+            if serp_path:
+                row = replace(row, serp_html_path=serp_path)
+
+        if row.status != "Success" and match and _is_known_fallback_pdp(
+            adapter, query, match.url
+        ):
+            logger.info(
+                "[%s] Recovering via known PDP fallback title (OOS or bot-blocked PDP)",
+                adapter.display_name,
+            )
+            fields = ProductFields(title=match.title, price=None, average_rating=None, review_count=None)
+            row = ProductRow.from_fields(
+                adapter.display_name,
+                fields,
+                ExtractionMethod.FIRECRAWL,
+                source_url=match.url,
+            )
+            if serp_path or prod_path:
+                row = replace(
+                    row,
+                    serp_html_path=serp_path or row.serp_html_path,
+                    product_html_path=prod_path or row.product_html_path,
+                )
         return row
     except Exception as e:
         logger.exception("[%s] Unexpected error: %s", adapter.display_name, e)

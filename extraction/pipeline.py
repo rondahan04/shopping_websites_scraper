@@ -8,8 +8,9 @@ from extraction.firecrawl_extract import extract_with_firecrawl
 from extraction.llm_extract import extract_with_llm
 from extraction.playwright_extract import extract_with_playwright
 from extraction.scrapling_extract import extract_with_scrapling
-from models import ExtractionFailure, ExtractionMethod, ProductFields, ProductRow
+from models import ExtractionFailure, ExtractionMethod, ProductRow
 from sites.base import SiteAdapter
+from validation.fields import validate_product_fields
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,34 @@ def run_extraction_pipeline(
     except ExtractionFailure as e:
         last_error = str(e)
         logger.info("%s M4 failed: %s", adapter.display_name, e)
+
+    # Out-of-stock PDPs may yield a title via LLM/Firecrawl but no price.
+    if not cached_html:
+        try:
+            from extraction.firecrawl_extract import fetch_html_firecrawl
+
+            cached_html = fetch_html_firecrawl(product_url, wait_ms=6_000)
+        except ExtractionFailure:
+            pass
+
+    if cached_html:
+        try:
+            fields = extract_with_llm(cached_html, product_url)
+            validate_product_fields(fields, require_price=False)
+            if fields.title and fields.price is None:
+                row = ProductRow.from_fields(
+                    adapter.display_name,
+                    fields,
+                    ExtractionMethod.LLM,
+                    source_url=product_url,
+                )
+                logger.info(
+                    "%s accepted title-only (out of stock / no price on page)",
+                    adapter.display_name,
+                )
+                return row, cached_html if capture_product_html else None
+        except ExtractionFailure:
+            pass
 
     row = ProductRow.failed(adapter.display_name)
     logger.warning("%s all methods failed: %s", adapter.display_name, last_error)
