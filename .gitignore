@@ -43,18 +43,32 @@ build/
 
 # Node
 node_modules/
+web/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Next.js (build output — never commit)
+.next/
+web/.next/
+out/
+web/out/
+.vercel
+*.tsbuildinfo
+.turbo
+
 # OS & editors
 .DS_Store
+.AppleDouble
+.LSOverride
 Thumbs.db
 *.swp
 *.swo
 *~
 .idea/
+.vscode/
+*.code-workspace
 
 # Logs & caches
 run/
@@ -63,8 +77,10 @@ run/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
 coverage/
 htmlcov/
+.hypothesis/
 
 # Playwright browsers (local install)
 .playwright-browsers/
@@ -80,7 +96,8 @@ docs/
 scripts/
 package.json
 package-lock.json
-node_modules/
 
 # Misc
 *.local
+*.pem
+*.key
