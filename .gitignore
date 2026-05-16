@@ -71,5 +71,15 @@ htmlcov/
 # Local HTML dumps from `python main.py ... --save-html ./html_debug`
 html_debug/
 
+# Local-only (solo dev — not published)
+tests/
+.gstack/
+.husky/
+docs/
+scripts/
+package.json
+package-lock.json
+node_modules/
+
 # Misc
 *.local
