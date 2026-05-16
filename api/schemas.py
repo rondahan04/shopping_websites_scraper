@@ -70,12 +70,17 @@ def row_to_api(row: ProductRow) -> ProductRowOut:
     )
 
 
-def build_search_response(query: str, rows: list[ProductRow]) -> SearchResponse:
+def build_search_response(
+    query: str,
+    rows: list[ProductRow],
+    *,
+    total_sites: int | None = None,
+) -> SearchResponse:
     api_rows = [row_to_api(r) for r in rows]
     success = sum(1 for r in rows if row_has_scraped_price(r))
     return SearchResponse(
         query=query,
         rows=api_rows,
         success_count=success,
-        total_sites=len(rows),
+        total_sites=total_sites if total_sites is not None else len(rows),
     )

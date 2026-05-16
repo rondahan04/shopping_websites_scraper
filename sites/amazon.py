@@ -97,6 +97,72 @@ def _amazon_collect_valid_prices(root: Tag | BeautifulSoup) -> list[Decimal]:
 
 
 _AMAZON_LAPTOP_TITLE_RE = re.compile(r"macbook\s+(?:pro|air)\b", re.I)
+_AMAZON_LARGE_TV_TITLE_RE = re.compile(
+    r"(?:\boled\b|\bclass\s+oled\b|oled\s*evo)",
+    re.I,
+)
+
+# When DOM buy-box price is far below a visible list/JSON-LD reference, trust the reference.
+_AMAZON_DOM_VS_RETAIL_MIN_RATIO = Decimal("0.4")
+
+
+def _amazon_json_ld_retail_reference(json_ld, title: str) -> Decimal | None:
+    """JSON-LD ``Offer.price`` when it plausibly reflects cash MSRP (not a monthly fragment)."""
+    if not json_ld or not json_ld.price:
+        return None
+    jp = json_ld.price
+    t = title or ""
+    if _AMAZON_LAPTOP_TITLE_RE.search(t) and jp < Decimal("150"):
+        return None
+    if _AMAZON_LARGE_TV_TITLE_RE.search(t) and re.search(r"\b\d{2}\s*-?\s*inch\b", t, re.I):
+        if jp < Decimal("300"):
+            return None
+    return jp
+
+
+def _amazon_dom_strike_retail_references(soup: BeautifulSoup) -> list[Decimal]:
+    """List / was / comparison prices on the PDP (not the active buy-box line)."""
+    refs: list[Decimal] = []
+    for sel in (
+        "#comparison_price_row .a-offscreen",
+        ".basisPrice .a-offscreen",
+        ".basisPrice .a-text-price",
+        "span.a-text-price.a-text-strike",
+    ):
+        for node in soup.select(sel):
+            if _price_node_in_addon_context(node):
+                continue
+            raw = node.get_text()
+            if _price_text_looks_like_financing_teaser(raw):
+                continue
+            p = parse_price(raw)
+            if p and p >= Decimal("50"):
+                refs.append(p)
+    return refs
+
+
+def _amazon_retail_reference_price(soup: BeautifulSoup, json_ld, title: str) -> Decimal | None:
+    candidates: list[Decimal] = []
+    jp = _amazon_json_ld_retail_reference(json_ld, title)
+    if jp:
+        candidates.append(jp)
+    candidates.extend(_amazon_dom_strike_retail_references(soup))
+    return max(candidates) if candidates else None
+
+
+def _amazon_apply_dom_below_retail_reference(
+    price: Decimal,
+    soup: BeautifulSoup,
+    json_ld,
+    title: str,
+) -> Decimal:
+    """If DOM resolved far below list/JSON-LD retail, promote to the reference (e.g. $542 vs $1,496)."""
+    ref = _amazon_retail_reference_price(soup, json_ld, title)
+    if not ref or not price:
+        return price
+    if price < ref * _AMAZON_DOM_VS_RETAIL_MIN_RATIO:
+        return ref
+    return price
 
 
 def _amazon_laptop_price_implausibly_low(title: str, price: Decimal) -> bool:
@@ -106,6 +172,23 @@ def _amazon_laptop_price_implausibly_low(title: str, price: Decimal) -> bool:
     if not _AMAZON_LAPTOP_TITLE_RE.search(title):
         return False
     return price < Decimal("400")
+
+
+def _amazon_large_tv_price_implausibly_low(title: str, price: Decimal) -> bool:
+    """Large OLED TVs below ~$300 on the PDP are almost always financing/add-on fragments."""
+    if not title.strip():
+        return False
+    if not _AMAZON_LARGE_TV_TITLE_RE.search(title):
+        return False
+    if not re.search(r"\b\d{2}\s*-?\s*inch\b", title, re.I):
+        return False
+    return price < Decimal("300")
+
+
+def _amazon_price_needs_high_offer_rescue(title: str, price: Decimal) -> bool:
+    return _amazon_laptop_price_implausibly_low(title, price) or _amazon_large_tv_price_implausibly_low(
+        title, price
+    )
 
 
 def _amazon_whole_page_offscreen_price_max(soup: BeautifulSoup) -> Decimal | None:
@@ -373,11 +456,13 @@ class AmazonAdapter(SiteAdapter):
                 if price:
                     break
         if not price and json_ld and json_ld.price:
-            # ``Offer.price`` on Apple laptops is often the monthly installment, not MSRP.
-            if not (
-                _AMAZON_LAPTOP_TITLE_RE.search(title or "")
-                and json_ld.price < Decimal("150")
-            ):
+            # ``Offer.price`` on Apple laptops / TVs is often the monthly installment, not MSRP.
+            skip_json_ld = False
+            if _AMAZON_LAPTOP_TITLE_RE.search(title or "") and json_ld.price < Decimal("150"):
+                skip_json_ld = True
+            if _AMAZON_LARGE_TV_TITLE_RE.search(title or "") and json_ld.price < Decimal("300"):
+                skip_json_ld = True
+            if not skip_json_ld:
                 price = json_ld.price
         if not price:
             price = _amazon_rescue_high_price_from_offer_regions(soup)
@@ -392,8 +477,8 @@ class AmazonAdapter(SiteAdapter):
                 price = jp
 
         # Schema.org ``Offer`` price can mirror a monthly installment; widen DOM search when
-        # the title is clearly a MacBook but the resolved price looks like a payment fragment.
-        if price and title and _amazon_laptop_price_implausibly_low(title, price):
+        # the title is clearly a MacBook / large TV but the resolved price looks like a teaser.
+        if price and title and _amazon_price_needs_high_offer_rescue(title, price):
             rescue = _amazon_rescue_high_price_from_offer_regions(soup)
             if rescue and rescue > price * Decimal("1.35"):
                 price = rescue
@@ -404,6 +489,9 @@ class AmazonAdapter(SiteAdapter):
                 and whole > price * Decimal("1.15")
             ):
                 price = whole
+
+        if price:
+            price = _amazon_apply_dom_below_retail_reference(price, soup, json_ld, title)
 
         rating = json_ld.average_rating if json_ld else None
         if not rating:

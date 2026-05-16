@@ -9,9 +9,11 @@ from matching.condition import condition_score_penalty
 from matching.normalize import (
     bundle_penalty,
     has_accessory_conflict,
+    has_bundle_conflict,
     has_chip_generation_mismatch,
     has_earbuds_vs_headphones_conflict,
     has_model_code_mismatch,
+    has_screen_size_mismatch,
     has_year_conflict,
     model_token_recall,
     normalize_text,
@@ -20,7 +22,7 @@ from models import MatchCandidate, SearchResult
 from rapidfuzz import fuzz
 
 
-def score_title(query: str, title: str) -> tuple[float, dict]:
+def score_title(query: str, title: str, url: str = "") -> tuple[float, dict]:
     qn = normalize_text(query)
     tn = normalize_text(title)
 
@@ -28,6 +30,10 @@ def score_title(query: str, title: str) -> tuple[float, dict]:
         return 0.0, {"filtered": "accessory"}
     if has_earbuds_vs_headphones_conflict(qn, tn):
         return 0.0, {"filtered": "earbuds_vs_headphones"}
+    if has_bundle_conflict(qn, tn, url):
+        return 0.0, {"filtered": "bundle"}
+    if has_screen_size_mismatch(qn, tn, url):
+        return 0.0, {"filtered": "screen_size"}
     if has_model_code_mismatch(qn, tn):
         return 0.0, {"filtered": "model_code"}
     if has_chip_generation_mismatch(qn, tn):
@@ -75,7 +81,7 @@ def pick_best_match(
     for r in results:
         # Use URL path only—tracking query params often contain the search string (false p12 match).
         path = urlparse(r.url).path if r.url else ""
-        score, details = score_title(query, f"{r.title} {path}")
+        score, details = score_title(query, r.title, r.url)
         if details.get("filtered"):
             continue
         candidates.append(MatchCandidate(result=r, score=score, details=details))
@@ -87,6 +93,8 @@ def pick_best_match(
             tn = normalize_text(f"{r.title} {path}")
             if (
                 has_accessory_conflict(qn_static, tn)
+                or has_bundle_conflict(qn_static, tn, r.url)
+                or has_screen_size_mismatch(qn_static, tn, r.url)
                 or has_model_code_mismatch(qn_static, tn)
                 or has_year_conflict(qn_static, tn)
             ):

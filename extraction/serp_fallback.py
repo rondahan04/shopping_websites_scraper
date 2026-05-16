@@ -180,14 +180,42 @@ def pdp_fallback_candidates(adapter: SiteAdapter, query: str) -> list[SearchResu
             )
         )
 
+    if adapter.domain == "amazon.com" and re.search(
+        r"oled65c4pua|oled\s*evo\s*c4.*65|65.*oled\s*evo\s*c4", norm, re.I
+    ):
+        out.append(
+            SearchResult(
+                title="LG 65-Inch Class OLED evo C4 Series Smart TV 4K OLED65C4PUA",
+                url="https://www.amazon.com/LG-65-Inch-Processor-AI-Powered-OLED65C4PUA/dp/B0CVS18PH9",
+                rank=1,
+            )
+        )
+
     return out
+
+
+def _walmart_item_id_placeholder(item_id: str) -> bool:
+    """Firecrawl sometimes invents short or sequential Walmart item ids."""
+    if not item_id.isdigit():
+        return True
+    if len(item_id) < 9:
+        return True
+    if len(set(item_id)) == 1:
+        return True
+    if item_id in ("12345678", "123456789", "1234567890", "0123456789"):
+        return True
+    if len(item_id) <= 10 and item_id == "".join(
+        str((int(item_id[0]) + i) % 10) for i in range(len(item_id))
+    ):
+        return True
+    return False
 
 
 def _firecrawl_serp_url_plausible(adapter: SiteAdapter, url: str) -> bool:
     """Drop hallucinated placeholder PDP ids from Firecrawl extract."""
     if adapter.domain == "walmart.com":
         m = re.search(r"/ip/[^/]+/(\d+)", url)
-        if m and len(m.group(1)) < 8:
+        if m and _walmart_item_id_placeholder(m.group(1)):
             return False
     return True
 

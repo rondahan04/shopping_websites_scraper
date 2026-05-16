@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import replace
+from pathlib import Path
 from urllib.parse import urlparse
 
 from config import SETTINGS
@@ -23,10 +24,12 @@ from matching.condition import listing_is_non_new, query_requests_used_condition
 from matching.normalize import (
     DEVICE_QUERY_MARKERS,
     has_accessory_conflict,
+    has_bundle_conflict,
     has_chip_generation_mismatch,
     has_earbuds_vs_headphones_conflict,
     is_amazon_earbuds_asin_for_headphone_query,
     has_model_code_mismatch,
+    has_screen_size_mismatch,
     normalize_text,
 )
 from matching.scorer import pick_best_match
@@ -53,7 +56,12 @@ def _should_skip_serp_candidate(query: str, listing: SearchResult) -> bool:
     """Skip renewed/refurb/open-box SERP rows when the user wants new retail."""
     if query_requests_used_condition(query):
         return False
-    return listing_is_non_new(listing.title)
+    if listing_is_non_new(listing.title):
+        return True
+    qn = normalize_text(query)
+    if has_bundle_conflict(qn, normalize_text(listing.title), listing.url):
+        return True
+    return False
 
 
 def _row_passes_price_verify(
@@ -149,6 +157,7 @@ def _try_alternate_serp_candidates(
     skip_urls: set[str],
     capture: bool,
     serp_path: str | None,
+    plan: SiteSearchPlan | None = None,
     max_alternates: int = 5,
 ) -> ProductRow | None:
     """After a bad PDP on one SERP row, try other ranked candidates (new URL each time)."""
@@ -166,6 +175,10 @@ def _try_alternate_serp_candidates(
             skip_urls.add(alt.url)
             continue
         if _listing_model_mismatch(user_query, alt.title, alt.url):
+            skip_urls.add(alt.url)
+            continue
+        if plan is not None and not _llm_accepts_listing(adapter, plan, alt):
+            skip_urls.add(alt.url)
             continue
         if not pdp_url_reachable(alt.url):
             continue
@@ -211,6 +224,7 @@ def _apply_llm_price_verify(
     capture: bool,
     serp_path: str | None,
     prod_path: str | None,
+    plan: SiteSearchPlan | None = None,
 ) -> ProductRow:
     """Reject implausible prices; retry same URL with heavier methods, then other SERP rows."""
     if row.status != "Success" or not row_has_scraped_price(row):
@@ -222,8 +236,21 @@ def _apply_llm_price_verify(
         return row
 
     skip_urls: set[str] = {match.url}
+    cached_html: str | None = None
+    if prod_path:
+        try:
+            cached_html = Path(prod_path).read_text(encoding="utf-8", errors="replace")
+        except OSError as e:
+            logger.debug(
+                "[%s] could not read cached product html for price fallback: %s",
+                adapter.display_name,
+                e,
+            )
     retry_row, retry_html = run_extraction_pipeline_price_retry(
-        adapter, match.url, capture_product_html=capture
+        adapter,
+        match.url,
+        capture_product_html=capture,
+        cached_html=cached_html,
     )
     retry_prod_path = prod_path
     if capture and retry_html:
@@ -250,12 +277,42 @@ def _apply_llm_price_verify(
             skip_urls=skip_urls,
             capture=capture,
             serp_path=serp_path,
+            plan=plan,
         )
         if alt_row is not None:
             return alt_row
 
     return _failed_after_price_verify(
         adapter, serp_path=serp_path, prod_path=retry_prod_path or prod_path
+    )
+
+
+def _try_alternate_after_failed_extraction(
+    adapter: SiteAdapter,
+    *,
+    user_query: str,
+    match: SearchResult,
+    candidates: list[MatchCandidate],
+    capture: bool,
+    serp_path: str | None,
+    plan: SiteSearchPlan | None,
+) -> ProductRow | None:
+    """When the matched PDP 404s or cannot be parsed, walk other SERP rows."""
+    if not candidates:
+        return None
+    logger.info(
+        "[%s] Primary PDP extraction failed for %s; trying alternate SERP candidates",
+        adapter.display_name,
+        match.url[:80],
+    )
+    return _try_alternate_serp_candidates(
+        adapter,
+        user_query=user_query,
+        candidates=candidates,
+        skip_urls={match.url},
+        capture=capture,
+        serp_path=serp_path,
+        plan=plan,
     )
 
 
@@ -294,7 +351,12 @@ def _listing_model_mismatch(query: str, title: str, url: str = "") -> bool:
     """PDP title must carry query model codes (URL path alone is not enough)."""
     qn = normalize_text(query)
     tn = normalize_text(title)
-    return has_model_code_mismatch(qn, tn) or has_chip_generation_mismatch(qn, tn)
+    return (
+        has_model_code_mismatch(qn, tn)
+        or has_chip_generation_mismatch(qn, tn)
+        or has_screen_size_mismatch(qn, tn, url)
+        or has_bundle_conflict(qn, tn, url)
+    )
 
 
 def _verify_listing(
@@ -689,6 +751,30 @@ def scrape_site(adapter: SiteAdapter, plan: SiteSearchPlan) -> ProductRow:
                 serp_html_path=serp_path or row.serp_html_path,
                 product_html_path=prod_path or row.product_html_path,
             )
+
+        verify_candidates = candidates
+        if match and not verify_candidates:
+            verify_candidates = [MatchCandidate(match, log_score, {})]
+
+        if row.status != "Success" and verify_candidates:
+            alt_row = _try_alternate_after_failed_extraction(
+                adapter,
+                user_query=query,
+                match=match,
+                candidates=verify_candidates,
+                capture=capture,
+                serp_path=serp_path,
+                plan=plan,
+            )
+            if alt_row is not None:
+                return alt_row
+
+        if row.status != "Success":
+            failed = ProductRow.failed(adapter.display_name)
+            if serp_path:
+                failed = replace(failed, serp_html_path=serp_path)
+            return failed
+
         if row.status == "Success" and _listing_looks_like_accessory_for_query(
             query, row.product_title
         ):
@@ -712,10 +798,6 @@ def scrape_site(adapter: SiteAdapter, plan: SiteSearchPlan) -> ProductRow:
             if serp_path:
                 row = replace(row, serp_html_path=serp_path)
 
-        verify_candidates = candidates
-        if match and not verify_candidates:
-            verify_candidates = [MatchCandidate(match, log_score, {})]
-
         row = _apply_llm_price_verify(
             adapter,
             user_query=query,
@@ -725,6 +807,7 @@ def scrape_site(adapter: SiteAdapter, plan: SiteSearchPlan) -> ProductRow:
             capture=capture,
             serp_path=serp_path,
             prod_path=prod_path,
+            plan=plan,
         )
 
         if not row_has_scraped_price(row) and match and _is_known_fallback_pdp(

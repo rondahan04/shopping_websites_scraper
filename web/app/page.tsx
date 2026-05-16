@@ -1,6 +1,8 @@
 "use client";
 
+import Image from "next/image";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { WaitGame } from "@/components/WaitGame";
 import {
   getSearchJob,
   startSearchJob,
@@ -8,6 +10,7 @@ import {
   type ProductRow,
   type SearchResponse,
 } from "@/lib/api";
+import { formatScrapeMethod, productLink } from "@/lib/methodLabels";
 
 function StatusBadge({ row }: { row: ProductRow }) {
   const ok = row.status === "Success" && row.has_price;
@@ -41,21 +44,44 @@ function ProgressPanel({ job }: { job: JobStatus }) {
       </div>
       {progress.stores_done.length > 0 && (
         <p className="progress-stores">
-          Finished: {progress.stores_done.join(", ")}
+          Done so far: {progress.stores_done.join(", ")}
         </p>
       )}
     </div>
   );
 }
 
-function ResultsTable({ data }: { data: SearchResponse }) {
+function ResultsTable({
+  data,
+  inProgress = false,
+  storesDone = 0,
+}: {
+  data: SearchResponse;
+  inProgress?: boolean;
+  storesDone?: number;
+}) {
   return (
     <section className="results" aria-live="polite">
       <div className="results-header">
         <h2>Results for &ldquo;{data.query}&rdquo;</h2>
         <p className="results-meta">
-          Found prices on {data.success_count} of {data.total_sites} stores
+          {inProgress ? (
+            <>
+              Showing {data.rows.length} of {data.total_sites} stores so far
+              {data.success_count > 0 &&
+                ` · ${data.success_count} with prices found`}
+              . Still checking the rest…
+            </>
+          ) : (
+            <>Found prices on {data.success_count} of {data.total_sites} stores</>
+          )}
         </p>
+        {inProgress && storesDone > 0 && (
+          <p className="results-partial-note">
+            New rows appear here as each store finishes — no need to wait for all
+            four.
+          </p>
+        )}
       </div>
       <div className="table-wrap">
         <table>
@@ -66,45 +92,64 @@ function ResultsTable({ data }: { data: SearchResponse }) {
               <th scope="col">Price</th>
               <th scope="col">Average rating</th>
               <th scope="col">Review count</th>
+              <th scope="col">Method</th>
+              <th scope="col">Product page</th>
             </tr>
           </thead>
           <tbody>
-            {data.rows.map((row) => (
-              <tr key={row.website}>
-                <td className="site-name">
-                  {row.website}
-                  <StatusBadge row={row} />
-                </td>
-                <td className="title-cell">
-                  {row.product_title === "N/A" ? (
-                    <span className="na">Not available</span>
-                  ) : (
-                    row.product_title
-                  )}
-                </td>
-                <td className="price">
-                  {row.price === "N/A" ? (
-                    <span className="na">Not available</span>
-                  ) : (
-                    row.price
-                  )}
-                </td>
-                <td>
-                  {row.average_rating === "N/A" ? (
-                    <span className="na">Not available</span>
-                  ) : (
-                    row.average_rating
-                  )}
-                </td>
-                <td>
-                  {row.review_count === "N/A" ? (
-                    <span className="na">Not available</span>
-                  ) : (
-                    row.review_count
-                  )}
-                </td>
-              </tr>
-            ))}
+            {data.rows.map((row) => {
+              const href = productLink(row.source_url);
+              return (
+                <tr key={row.website}>
+                  <td className="site-name">
+                    {row.website}
+                    <StatusBadge row={row} />
+                  </td>
+                  <td className="title-cell">
+                    {row.product_title === "N/A" ? (
+                      <span className="na">Not available</span>
+                    ) : (
+                      row.product_title
+                    )}
+                  </td>
+                  <td className="price">
+                    {row.price === "N/A" ? (
+                      <span className="na">Not available</span>
+                    ) : (
+                      row.price
+                    )}
+                  </td>
+                  <td>
+                    {row.average_rating === "N/A" ? (
+                      <span className="na">Not available</span>
+                    ) : (
+                      row.average_rating
+                    )}
+                  </td>
+                  <td>
+                    {row.review_count === "N/A" ? (
+                      <span className="na">Not available</span>
+                    ) : (
+                      row.review_count
+                    )}
+                  </td>
+                  <td className="method-cell">
+                    <code className="method-code">
+                      {formatScrapeMethod(row.method)}
+                    </code>
+                  </td>
+                  <td className="link-cell">
+                    {href ? (
+                      <a href={href} target="_blank" rel="noopener noreferrer">
+                        View on store
+                      </a>
+                    ) : (
+                      <span className="na">Not available</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -154,6 +199,10 @@ export default function HomePage() {
           const status = await getSearchJob(jobId, controller.signal);
           setJob(status);
 
+          if (status.result && status.result.rows.length > 0) {
+            setResult(status.result);
+          }
+
           if (status.status === "done" && status.result) {
             setResult(status.result);
             setLoading(false);
@@ -186,19 +235,27 @@ export default function HomePage() {
 
   return (
     <main>
-      <header>
-        <h1>Multi-store price compare</h1>
-        <p className="lead">
-          Type a product name and we will check Amazon, Walmart, Best Buy, and
-          Newegg for you. This usually takes a few minutes — you can watch the
-          progress bar below.
-        </p>
+      <header className="site-header">
+        <Image
+          src="/scrapegoat-logo.png"
+          alt="ScrapeGoat logo"
+          width={56}
+          height={56}
+          priority
+        />
+        <div>
+          <h1 className="brand-title">ScrapeGoat</h1>
+          <p className="brand-tagline">
+            One search, four big stores. We pull live prices, star ratings, and
+            review counts so you can compare without opening a dozen tabs.
+          </p>
+        </div>
       </header>
 
       <section className="card">
         <form className="search-form" onSubmit={onSubmit}>
           <label htmlFor="product-query">
-            What are you looking for?
+            What do you want to compare?
             <input
               id="product-query"
               name="query"
@@ -216,12 +273,16 @@ export default function HomePage() {
           </button>
         </form>
 
-        {loading && job && <ProgressPanel job={job} />}
-
-        {loading && !job && (
-          <div className="status-bar loading" role="status">
-            Getting ready…
-          </div>
+        {loading && (
+          <>
+            {job && <ProgressPanel job={job} />}
+            {!job && (
+              <div className="status-bar" role="status">
+                Getting ready…
+              </div>
+            )}
+            <WaitGame />
+          </>
         )}
 
         {error && (
@@ -231,10 +292,16 @@ export default function HomePage() {
         )}
       </section>
 
-      {result && <ResultsTable data={result} />}
+      {result && result.rows.length > 0 && (
+        <ResultsTable
+          data={result}
+          inProgress={loading}
+          storesDone={job?.progress.stores_done.length ?? result.rows.length}
+        />
+      )}
 
       <footer>
-        Prices are fetched live from each store when you search.
+        ScrapeGoat checks Amazon, Walmart, Best Buy, and Newegg when you search.
       </footer>
     </main>
   );

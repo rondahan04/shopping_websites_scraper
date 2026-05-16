@@ -12,6 +12,11 @@ from utils.browser_profiles import build_http_headers, pick_browser_profile
 logger = logging.getLogger(__name__)
 
 
+def _url_is_retailer_block_page(url: str) -> bool:
+    u = url.lower()
+    return "/blocked" in u or "validatecaptcha" in u or "/bot-mitigation" in u
+
+
 def pdp_url_reachable(url: str, *, timeout_s: float | None = None) -> bool:
     """Return False only when the PDP URL clearly does not exist (4xx).
 
@@ -29,6 +34,10 @@ def pdp_url_reachable(url: str, *, timeout_s: float | None = None) -> bool:
                 resp = client.get(url, timeout=timeout)
             if resp.status_code in {404, 410}:
                 logger.info("PDP URL not reachable (%s): %s", resp.status_code, url[:120])
+                return False
+            final = str(resp.url)
+            if _url_is_retailer_block_page(final):
+                logger.info("PDP URL blocked by retailer: %s", final[:120])
                 return False
             return True
     except (httpx.TimeoutException, httpx.RequestError, OSError) as e:

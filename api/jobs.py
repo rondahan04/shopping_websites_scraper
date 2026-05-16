@@ -22,6 +22,10 @@ from api.schemas import SearchResponse, build_search_response
 from api.service import scrape_query_with_progress
 from api.timeline_log import timeline_log_session
 from models import ProductRow, row_has_scraped_price
+from sites import ALL_ADAPTERS
+
+SITE_ORDER = [a.display_name for a in ALL_ADAPTERS]
+STORES_TOTAL = len(ALL_ADAPTERS)
 
 JobStatus = Literal["running", "done", "error"]
 
@@ -41,6 +45,7 @@ class SearchJob:
     status: JobStatus
     progress: JobProgress
     result: SearchResponse | None = None
+    partial_rows: dict[str, ProductRow] = field(default_factory=dict)
     error: str | None = None
     created_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(),
@@ -58,7 +63,11 @@ class JobStore:
             job_id=job_id,
             query=query.strip(),
             status="running",
-            progress=JobProgress(percent=0, message=message_starting()),
+            progress=JobProgress(
+                percent=0,
+                message=message_starting(),
+                stores_total=STORES_TOTAL,
+            ),
         )
         with self._lock:
             self._jobs[job_id] = job
@@ -100,9 +109,17 @@ class JobStore:
             if stores_done is not None:
                 job.progress.stores_done = stores_done
 
+    def _publish_partial(self, job_id: str, query: str, rows_by_site: dict[str, ProductRow]) -> None:
+        ordered = [rows_by_site[name] for name in SITE_ORDER if name in rows_by_site]
+        if not ordered:
+            return
+        partial = build_search_response(query, ordered, total_sites=STORES_TOTAL)
+        self._update(job_id, result=partial, partial_rows=rows_by_site)
+
     def _run_job(self, job_id: str, query: str, rescrape_price_gaps: bool) -> None:
         stores_done: list[str] = []
-        total = 4
+        rows_by_site: dict[str, ProductRow] = {}
+        total = STORES_TOTAL
 
         def on_first_pass_begin() -> None:
             self._set_progress(
@@ -113,6 +130,8 @@ class JobStore:
             )
 
         def on_site_finished(website: str, row: ProductRow) -> None:
+            rows_by_site[website] = row
+            self._publish_partial(job_id, query, rows_by_site)
             name = friendly_store(website)
             if name not in stores_done:
                 stores_done.append(name)
@@ -132,7 +151,9 @@ class JobStore:
                 stores_done=list(stores_done),
             )
 
-        def on_recheck_site(website: str, _row: ProductRow) -> None:
+        def on_recheck_site(website: str, row: ProductRow) -> None:
+            rows_by_site[website] = row
+            self._publish_partial(job_id, query, rows_by_site)
             self._set_progress(
                 job_id,
                 percent=88,
@@ -159,7 +180,7 @@ class JobStore:
                     on_recheck_site=on_recheck_site,
                     on_wrapping_up=on_wrapping_up,
                 )
-            response = build_search_response(query, rows)
+            response = build_search_response(query, rows, total_sites=STORES_TOTAL)
             self._set_progress(
                 job_id,
                 percent=100,

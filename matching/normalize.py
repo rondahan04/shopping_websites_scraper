@@ -68,6 +68,23 @@ ACCESSORY_SUBSTRINGS: tuple[str, ...] = (
 
 BUNDLE_KEYWORDS = frozenset({"bundle", "2-pack", "3-pack", "combo", "+ keyboard", "with keyboard"})
 
+# TV + soundbar bundles when the user asked for the standalone device.
+_BUNDLE_LISTING_MARKERS: tuple[str, ...] = (
+    "bundle",
+    "soundbar",
+    "sound bar",
+    "wireless-speaker",
+    "wireless-speakers",
+    "wireless-soundbar",
+    "matching sound",
+    "with soundbar",
+    "channel matching",
+    "protection bundle",
+)
+
+_INCH_SIZE_RE = re.compile(r"\b(\d{2})\s*-?\s*inch\b", re.I)
+_OLED_SIZE_IN_MODEL_RE = re.compile(r"oled(\d{2})", re.I)
+
 DEVICE_QUERY_MARKERS: tuple[str, ...] = (
     "macbook",
     "laptop",
@@ -292,4 +309,51 @@ def bundle_penalty(query_norm: NormalizedText, title_norm: NormalizedText) -> fl
     for kw in BUNDLE_KEYWORDS:
         if kw in title_lower and kw not in query_norm.normalized:
             penalty += 8.0
+    for marker in _BUNDLE_LISTING_MARKERS:
+        if marker in title_lower and marker not in query_norm.normalized:
+            penalty += 12.0
     return penalty
+
+
+def _inch_sizes_from_text(*blobs: str) -> set[int]:
+    sizes: set[int] = set()
+    for blob in blobs:
+        if not blob:
+            continue
+        for m in _INCH_SIZE_RE.finditer(blob):
+            sizes.add(int(m.group(1)))
+        for m in re.finditer(r"\b(\d{2})\s*class\b", blob, re.I):
+            sizes.add(int(m.group(1)))
+        for m in _OLED_SIZE_IN_MODEL_RE.finditer(blob):
+            sizes.add(int(m.group(1)))
+    return sizes
+
+
+def has_bundle_conflict(
+    query_norm: NormalizedText,
+    title_norm: NormalizedText,
+    url: str = "",
+) -> bool:
+    """Reject TV+soundbar (etc.) bundles when the query does not ask for a bundle."""
+    q = query_norm.normalized
+    if any(kw in q for kw in ("bundle", "soundbar", "sound bar", "combo", "with soundbar")):
+        return False
+    blob = f"{title_norm.normalized} {url.lower()}"
+    return any(marker in blob for marker in _BUNDLE_LISTING_MARKERS)
+
+
+def has_screen_size_mismatch(
+    query_norm: NormalizedText,
+    title_norm: NormalizedText,
+    url: str = "",
+) -> bool:
+    """Reject listings with a different screen size than the query (e.g. 48\" vs 65\")."""
+    q_sizes = _inch_sizes_from_text(query_norm.normalized, " ".join(query_norm.model_tokens))
+    if not q_sizes:
+        return False
+    t_sizes = _inch_sizes_from_text(title_norm.normalized, url)
+    if not t_sizes:
+        return False
+    if q_sizes & t_sizes:
+        return False
+    return True

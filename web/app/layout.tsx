@@ -2,9 +2,12 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Price Compare — Shopping Scraper",
+  title: "ScrapeGoat — Compare prices across stores",
   description:
-    "Compare product prices, ratings, and reviews across Amazon, Best Buy, Walmart, and Newegg.",
+    "Search Amazon, Walmart, Best Buy, and Newegg in one place. ScrapeGoat finds prices, ratings, and reviews for you.",
+  icons: {
+    icon: "/scrapegoat-logo.png",
+  },
 };
 
 export default function RootLayout({
@@ -22,7 +25,7 @@ export default function RootLayout({
           crossOrigin="anonymous"
         />
         <link
-          href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400&family=JetBrains+Mono:wght@400;500&display=swap"
           rel="stylesheet"
         />
       </head>

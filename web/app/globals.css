@@ -1,17 +1,29 @@
+/* Diastema: add licensed .woff2 to /public/fonts/ — Fraunces is the free stand-in */
+@font-face {
+  font-family: "Diastema";
+  src: url("/fonts/Diastema-Regular.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
-  --bg: #f4f1eb;
-  --surface: #ffffff;
-  --ink: #1a1a1a;
-  --muted: #5c5c5c;
-  --border: #d9d2c6;
-  --accent: #c45c26;
-  --accent-hover: #a34a1c;
-  --success: #1f6b4a;
-  --fail: #9b2c2c;
-  --row-alt: #faf8f5;
-  --shadow: 0 12px 40px rgba(26, 26, 26, 0.08);
-  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --bg-deep: #071a1b;
+  --bg-mid: #0f3d3e;
+  --surface: #143f40;
+  --surface-raised: #1a4d4e;
+  --ink: #f5f0e6;
+  --muted: #a8c9c4;
+  --border: rgba(126, 224, 208, 0.22);
+  --accent: #ff6b4a;
+  --accent-hover: #ff8568;
+  --mint: #7ee0d0;
+  --success: #5ee0b0;
+  --fail: #ff8a7a;
+  --shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+  --font-display: "Diastema", "Fraunces", "Georgia", serif;
+  --font-body: "Diastema", "Fraunces", "Georgia", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
 * {
@@ -22,78 +34,109 @@ html,
 body {
   margin: 0;
   min-height: 100%;
-  background: var(--bg);
+  background: var(--bg-deep);
   color: var(--ink);
-  font-family: var(--font-sans);
-  line-height: 1.5;
+  font-family: var(--font-body);
+  line-height: 1.55;
 }
 
 body {
   background-image:
-    radial-gradient(circle at 10% 0%, rgba(196, 92, 38, 0.12), transparent 40%),
-    radial-gradient(circle at 90% 100%, rgba(31, 107, 74, 0.1), transparent 45%);
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(126, 224, 208, 0.18), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(255, 107, 74, 0.12), transparent),
+    linear-gradient(165deg, var(--bg-deep) 0%, var(--bg-mid) 45%, #0a2829 100%);
 }
 
 a {
+  color: var(--mint);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+a:hover {
   color: var(--accent);
 }
 
 main {
-  max-width: 1120px;
+  max-width: 1180px;
   margin: 0 auto;
-  padding: 2.5rem 1.25rem 4rem;
+  padding: 2rem 1.25rem 4rem;
 }
 
-h1 {
-  font-size: clamp(1.75rem, 4vw, 2.35rem);
-  font-weight: 600;
+.site-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.site-header img {
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.brand-title {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 5vw, 2.75rem);
+  font-weight: 700;
   letter-spacing: -0.02em;
-  margin: 0 0 0.5rem;
+  margin: 0;
+  line-height: 1.1;
+  background: linear-gradient(135deg, var(--ink) 0%, var(--mint) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-.lead {
+.brand-tagline {
   color: var(--muted);
-  max-width: 42rem;
-  margin: 0 0 2rem;
+  font-size: 1.05rem;
+  max-width: 36rem;
+  margin: 0 0 1.75rem;
 }
 
 .card {
-  background: var(--surface);
+  background: linear-gradient(145deg, var(--surface) 0%, var(--surface-raised) 100%);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 18px;
   box-shadow: var(--shadow);
-  padding: 1.25rem 1.5rem;
+  padding: 1.5rem 1.75rem;
 }
 
 .search-form {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: 0.85rem;
   align-items: stretch;
 }
 
 .search-form label {
-  flex: 1 1 280px;
+  flex: 1 1 300px;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  font-size: 0.875rem;
+  gap: 0.4rem;
+  font-size: 0.9rem;
   font-weight: 500;
   color: var(--muted);
 }
 
 .search-form input {
   font: inherit;
-  padding: 0.75rem 1rem;
+  font-size: 1.05rem;
+  padding: 0.85rem 1.1rem;
   border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--row-alt);
+  border-radius: 12px;
+  background: rgba(7, 26, 27, 0.6);
   color: var(--ink);
 }
 
+.search-form input::placeholder {
+  color: rgba(168, 201, 196, 0.55);
+}
+
 .search-form input:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline: 2px solid var(--mint);
+  outline-offset: 2px;
   border-color: transparent;
 }
 
@@ -101,41 +144,41 @@ h1 {
   align-self: flex-end;
   font: inherit;
   font-weight: 600;
-  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  padding: 0.85rem 1.75rem;
   border: none;
-  border-radius: 10px;
-  background: var(--accent);
-  color: #fff;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent) 0%, #e85a3a 100%);
+  color: #1a0f0d;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: transform 0.15s ease, filter 0.15s ease;
+  box-shadow: 0 4px 20px rgba(255, 107, 74, 0.35);
 }
 
 .search-form button:hover:not(:disabled) {
-  background: var(--accent-hover);
+  transform: translateY(-1px);
+  filter: brightness(1.08);
 }
 
 .search-form button:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: not-allowed;
+  transform: none;
 }
 
 .status-bar {
-  margin-top: 1rem;
-  padding: 0.75rem 1rem;
-  border-radius: 10px;
-  font-size: 0.9rem;
-  background: var(--row-alt);
+  margin-top: 1.1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  background: rgba(7, 26, 27, 0.5);
   border: 1px solid var(--border);
 }
 
 .status-bar.error {
-  background: #fdecea;
-  border-color: #f5c4c0;
+  background: rgba(255, 107, 74, 0.12);
+  border-color: rgba(255, 138, 122, 0.4);
   color: var(--fail);
-}
-
-.status-bar.loading {
-  border-color: rgba(196, 92, 38, 0.35);
 }
 
 .progress-panel {
@@ -147,20 +190,20 @@ h1 {
   justify-content: space-between;
   align-items: baseline;
   gap: 1rem;
-  font-size: 0.95rem;
-  margin-bottom: 0.5rem;
+  font-size: 1rem;
+  margin-bottom: 0.55rem;
 }
 
 .progress-percent {
   font-family: var(--font-mono);
   font-weight: 600;
-  color: var(--accent);
+  color: var(--mint);
   white-space: nowrap;
 }
 
 .progress-track {
-  height: 10px;
-  background: var(--row-alt);
+  height: 12px;
+  background: rgba(7, 26, 27, 0.6);
   border: 1px solid var(--border);
   border-radius: 999px;
   overflow: hidden;
@@ -168,19 +211,63 @@ h1 {
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--accent), #e08a4a);
+  background: linear-gradient(90deg, var(--mint), var(--accent));
   border-radius: 999px;
-  transition: width 0.4s ease;
+  transition: width 0.45s ease;
 }
 
 .progress-stores {
-  margin: 0.6rem 0 0;
-  font-size: 0.85rem;
+  margin: 0.65rem 0 0;
+  font-size: 0.88rem;
   color: var(--muted);
 }
 
+.wait-game {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(7, 26, 27, 0.55);
+}
+
+.wait-game-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.wait-game-title {
+  font-weight: 600;
+  color: var(--mint);
+}
+
+.wait-game-score {
+  font-family: var(--font-mono);
+  color: var(--muted);
+}
+
+.wait-game-canvas {
+  display: block;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  border-radius: 10px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+}
+
+.wait-game-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  text-align: center;
+}
+
 .results {
-  margin-top: 1.5rem;
+  margin-top: 2rem;
 }
 
 .results-header {
@@ -189,58 +276,70 @@ h1 {
   justify-content: space-between;
   align-items: baseline;
   gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.85rem;
 }
 
 .results-header h2 {
-  font-size: 1.1rem;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
   margin: 0;
+  font-weight: 600;
 }
 
 .results-meta {
-  font-size: 0.875rem;
+  font-size: 0.9rem;
   color: var(--muted);
-  font-family: var(--font-mono);
+}
+
+.results-partial-note {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  color: var(--mint);
 }
 
 .table-wrap {
   overflow-x: auto;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--surface);
+  box-shadow: var(--shadow);
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: 0.92rem;
 }
 
 thead th {
   text-align: left;
-  padding: 0.85rem 1rem;
-  background: #efe9df;
+  padding: 0.9rem 1rem;
+  background: rgba(126, 224, 208, 0.1);
   font-weight: 600;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
+  letter-spacing: 0.06em;
+  color: var(--mint);
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 
 tbody td {
-  padding: 0.85rem 1rem;
+  padding: 0.9rem 1rem;
   border-bottom: 1px solid var(--border);
   vertical-align: top;
 }
 
 tbody tr:nth-child(even) {
-  background: var(--row-alt);
+  background: rgba(7, 26, 27, 0.35);
 }
 
 tbody tr:last-child td {
   border-bottom: none;
+}
+
+tbody tr:hover {
+  background: rgba(126, 224, 208, 0.06);
 }
 
 .site-name {
@@ -249,49 +348,78 @@ tbody tr:last-child td {
 }
 
 .title-cell {
-  max-width: 320px;
+  max-width: 280px;
+}
+
+.link-cell a {
+  font-weight: 500;
+  word-break: break-all;
+}
+
+.method-cell {
+  white-space: nowrap;
+}
+
+.method-code {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--mint);
+  background: rgba(126, 224, 208, 0.12);
+  padding: 0.2rem 0.45rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
 }
 
 .badge {
   display: inline-block;
-  font-size: 0.7rem;
-  font-weight: 600;
+  font-size: 0.65rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding: 0.15rem 0.45rem;
-  border-radius: 4px;
+  letter-spacing: 0.04em;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
   margin-left: 0.35rem;
   vertical-align: middle;
 }
 
 .badge.ok {
-  background: #d8f0e6;
+  background: rgba(94, 224, 176, 0.2);
   color: var(--success);
 }
 
 .badge.fail {
-  background: #fdecea;
+  background: rgba(255, 138, 122, 0.15);
   color: var(--fail);
 }
 
 .price {
   font-family: var(--font-mono);
   font-weight: 600;
+  font-size: 1rem;
+  color: var(--mint);
   white-space: nowrap;
 }
 
 .na {
   color: var(--muted);
+  font-style: italic;
 }
 
 footer {
   margin-top: 2.5rem;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   color: var(--muted);
+  text-align: center;
 }
 
 @media (max-width: 640px) {
   .search-form button {
     width: 100%;
+  }
+
+  .site-header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

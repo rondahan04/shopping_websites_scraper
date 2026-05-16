@@ -126,19 +126,46 @@ def run_extraction_pipeline_price_retry(
     product_url: str,
     *,
     capture_product_html: bool = False,
+    cached_html: str | None = None,
 ) -> tuple[ProductRow, str | None]:
-    """Re-run stages 2→4 after LLM price verify rejected stage 1."""
+    """After LLM price verify rejected a DOM/Playwright price: try LLM then Firecrawl (skip Playwright)."""
     logger.info(
-        "%s retrying PDP pipeline after price reject (stages 2–4)",
+        "%s price-verify fallback: trying LLM then Firecrawl (skipping Playwright)",
         adapter.display_name,
     )
-    row, html, _ = _run_core_pipeline(
-        adapter,
-        product_url,
-        capture_product_html=capture_product_html,
-        skip_http=True,
+    last_error = "unknown"
+    html_out: str | None = cached_html if capture_product_html else None
+
+    if cached_html:
+        try:
+            fields = extract_with_llm(cached_html, product_url)
+            row = ProductRow.from_fields(
+                adapter.display_name, fields, ExtractionMethod.LLM, source_url=product_url
+            )
+            logger.info("%s PDP via stage 3 %s (price-verify fallback)", adapter.display_name, _STAGE_LABELS[2])
+            return row, html_out
+        except ExtractionFailure as e:
+            last_error = str(e)
+            logger.info("%s stage 3 price-verify fallback failed: %s", adapter.display_name, e)
+
+    try:
+        fields = extract_with_firecrawl(product_url)
+        row = ProductRow.from_fields(
+            adapter.display_name, fields, ExtractionMethod.FIRECRAWL, source_url=product_url
+        )
+        logger.info("%s PDP via stage 4 %s (price-verify fallback)", adapter.display_name, _STAGE_LABELS[3])
+        return row, html_out
+    except ExtractionFailure as e:
+        last_error = str(e)
+        logger.info("%s stage 4 price-verify fallback failed: %s", adapter.display_name, e)
+
+    row = ProductRow.failed(adapter.display_name)
+    logger.warning(
+        "%s price-verify fallback exhausted (LLM/Firecrawl): %s",
+        adapter.display_name,
+        last_error,
     )
-    return row, html
+    return row, html_out
 
 
 def run_extraction_pipeline(
