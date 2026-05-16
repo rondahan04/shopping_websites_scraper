@@ -20,6 +20,7 @@ from api.progress import (
 )
 from api.schemas import SearchResponse, build_search_response
 from api.service import scrape_query_with_progress
+from api.timeline_log import timeline_log_session
 from models import ProductRow, row_has_scraped_price
 
 JobStatus = Literal["running", "done", "error"]
@@ -148,15 +149,16 @@ class JobStore:
             )
 
         try:
-            rows = scrape_query_with_progress(
-                query,
-                rescrape_price_gaps=rescrape_price_gaps,
-                on_first_pass_begin=on_first_pass_begin,
-                on_site_finished=on_site_finished,
-                on_recheck_begin=on_recheck_begin,
-                on_recheck_site=on_recheck_site,
-                on_wrapping_up=on_wrapping_up,
-            )
+            with timeline_log_session(job_id, query):
+                rows = scrape_query_with_progress(
+                    query,
+                    rescrape_price_gaps=rescrape_price_gaps,
+                    on_first_pass_begin=on_first_pass_begin,
+                    on_site_finished=on_site_finished,
+                    on_recheck_begin=on_recheck_begin,
+                    on_recheck_site=on_recheck_site,
+                    on_wrapping_up=on_wrapping_up,
+                )
             response = build_search_response(query, rows)
             self._set_progress(
                 job_id,

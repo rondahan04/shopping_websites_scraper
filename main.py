@@ -44,7 +44,7 @@ def main() -> int:
     parser.add_argument(
         "--no-price-gap-rescrape",
         action="store_true",
-        help="Disable second pass: rescrape sites whose price is >30%% (configurable) from the mean of successful prices",
+        help="Disable second pass: rescrape sites whose price is >20%% (configurable) from GPT reference prices",
     )
     args = parser.parse_args()
 

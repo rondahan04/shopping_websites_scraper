@@ -41,9 +41,8 @@ class Settings:
     firecrawl_api_key: str | None = None
     firecrawl_api_url: str = "https://api.firecrawl.dev/v1/scrape"
     max_workers: int = 4
-    # After all sites return: mean of successful prices; rescrape sites farther than this (e.g. 0.30 = 30%).
-    price_gap_rescrape_threshold: float = 0.30
-    price_gap_min_priced_sites: int = 2
+    # Rescrape when scraped price differs from LLM reference by more than this (e.g. 0.20 = 20%).
+    price_gap_rescrape_threshold: float = 0.20
     price_gap_rescrape_enabled: bool = True
     # HTTP(S) proxy with US egress — retried when price is missing (geo-blocked PDPs).
     usa_http_proxy: str | None = None
@@ -54,14 +53,9 @@ class Settings:
         firecrawl_key = os.getenv("FIRECRAWL_API_KEY") or os.getenv("FIRECRAWL_APY_KEY")
         t_raw = os.getenv("PRICE_GAP_RESCRAPE_THRESHOLD", "").strip()
         try:
-            price_gap_threshold = float(t_raw) if t_raw else 0.30
+            price_gap_threshold = float(t_raw) if t_raw else 0.20
         except ValueError:
-            price_gap_threshold = 0.30
-        min_sites_raw = os.getenv("PRICE_GAP_MIN_PRICED_SITES", "2").strip()
-        try:
-            min_priced = max(2, int(min_sites_raw))
-        except ValueError:
-            min_priced = 2
+            price_gap_threshold = 0.20
         rescrape_env = os.getenv("PRICE_GAP_RESCRAPE", "true").strip().lower()
         rescrape_on = rescrape_env not in ("0", "false", "no", "off")
         soft_raw = os.getenv("MIN_MATCH_SCORE_SOFT_FLOOR", "").strip()
@@ -83,7 +77,6 @@ class Settings:
             firecrawl_api_key=firecrawl_key,
             openai_model=os.getenv("OPENAI_MODEL", "gpt-5.5"),
             price_gap_rescrape_threshold=price_gap_threshold,
-            price_gap_min_priced_sites=min_priced,
             price_gap_rescrape_enabled=rescrape_on,
             min_match_score_soft_floor=soft_floor,
             usa_http_proxy=usa_proxy,

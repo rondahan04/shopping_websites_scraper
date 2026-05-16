@@ -57,6 +57,7 @@ Thumbs.db
 .idea/
 
 # Logs & caches
+run/
 *.log
 .cache/
 .pytest_cache/

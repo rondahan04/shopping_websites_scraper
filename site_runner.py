@@ -10,8 +10,9 @@ from config import SETTINGS
 from extraction.llm_extract import parse_serp_with_llm
 from extraction.pipeline import run_extraction_pipeline
 from extraction.search_fetch import fetch_search_results
+from extraction.llm_site_search_plan import SiteSearchPlan
+from extraction.search_attempts import search_attempt_queries
 from extraction.serp_fallback import (
-    enriched_search_queries,
     firecrawl_extract_serp,
     google_site_search_discover,
     pdp_fallback_candidates,
@@ -167,7 +168,9 @@ def _amazon_pick_safe_match(candidates: list[MatchCandidate]) -> SearchResult | 
     return None
 
 
-def scrape_site(adapter: SiteAdapter, query: str) -> ProductRow:
+def scrape_site(adapter: SiteAdapter, plan: SiteSearchPlan) -> ProductRow:
+    """Search and extract one retailer using LLM-tuned search strings and match_query."""
+    query = plan.match_query
     capture = get_html_debug_dir() is not None
     serp_path: str | None = None
     prod_path: str | None = None
@@ -175,7 +178,7 @@ def scrape_site(adapter: SiteAdapter, query: str) -> ProductRow:
     try:
         results: list[SearchResult] = []
         serp_html: str | None = None
-        for attempt_q in enriched_search_queries(query):
+        for attempt_q in search_attempt_queries(plan):
             search_url = adapter.build_search_url(attempt_q)
             logger.info("[%s] Searching: %s", adapter.display_name, search_url)
             results, serp_html = fetch_search_results(adapter, search_url, query=attempt_q)
