@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from bs4 import BeautifulSoup, Tag
 
 from config import SETTINGS
+from matching.amazon_serp import is_amazon_serp_junk_title
 from models import ExtractionFailure, ProductFields, SearchResult
 from sites.base import SiteAdapter
 from utils.parsing import absolute_url, is_same_domain, parse_price, parse_rating, parse_review_count
@@ -266,6 +267,9 @@ class AmazonAdapter(SiteAdapter):
     display_name = "Amazon.com"
     domain = "amazon.com"
 
+    def page_ready_selectors(self) -> list[str]:
+        return ["#productTitle", "#titleSection", "main", "h1"]
+
     def build_search_url(self, query: str) -> str:
         return f"https://www.amazon.com/s?k={self.encoded_query(query)}"
 
@@ -300,6 +304,8 @@ class AmazonAdapter(SiteAdapter):
             href = link_el.get("href")
             if not title or not href:
                 continue
+            if is_amazon_serp_junk_title(title):
+                continue
             url = absolute_url(base_url, href)
             if not self.is_product_url(url):
                 continue
@@ -315,7 +321,7 @@ class AmazonAdapter(SiteAdapter):
             for a in soup.select('a[href*="/dp/"]'):
                 title = a.get_text(strip=True)
                 href = a.get("href", "")
-                if len(title) < 10:
+                if len(title) < 10 or is_amazon_serp_junk_title(title):
                     continue
                 url = absolute_url(base_url, href).split("?")[0]
                 if self.is_product_url(url):

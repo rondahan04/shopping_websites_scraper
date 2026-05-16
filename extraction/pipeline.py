@@ -1,10 +1,24 @@
-"""Sequential extraction fallback pipeline (M1 → M4) with optional US-geo price retry."""
+"""Product PDP extraction: four-stage fallback pipeline.
+
+Stage 1 — Basic scraping
+    HTTP GET (httpx) + BeautifulSoup parsers on each site's adapter.
+
+Stage 2 — Browser-based scraping
+    Playwright loads the page like a real browser; HTML is parsed with BeautifulSoup.
+
+Stage 3 — LLM-based extraction
+    Visible page text from prior HTML is sent to an LLM for structured fields.
+
+Stage 4 — Firecrawl
+    Firecrawl API fetches or extracts the page when local methods fail.
+
+Each stage is attempted in order; the first successful extraction wins.
+"""
 
 from __future__ import annotations
 
 import logging
 
-from config import SETTINGS
 from extraction.firecrawl_extract import extract_with_firecrawl
 from extraction.llm_extract import extract_with_llm
 from extraction.playwright_extract import extract_with_playwright
@@ -13,6 +27,13 @@ from models import ExtractionFailure, ExtractionMethod, ProductRow, row_has_scra
 from sites.base import SiteAdapter
 
 logger = logging.getLogger(__name__)
+
+_STAGE_LABELS = (
+    "basic (HTTP + BeautifulSoup)",
+    "browser (Playwright)",
+    "LLM extraction",
+    "Firecrawl API",
+)
 
 
 def _row_has_price(row: ProductRow) -> bool:
@@ -24,116 +45,100 @@ def _run_core_pipeline(
     product_url: str,
     *,
     capture_product_html: bool,
-    proxy_url: str | None,
+    skip_http: bool = False,
 ) -> tuple[ProductRow, str | None, str | None]:
-    """M1–M4 with optional proxy. Returns (row, product_html, cached_html_for_llm)."""
+    """Run stages 1→4 in order. Returns (row, product_html, cached_html_for_llm)."""
     last_error = "unknown"
     cached_html: str | None = None
 
-    try:
-        fields, html = extract_with_http(adapter, product_url, proxy_url=proxy_url)
-        row = ProductRow.from_fields(
-            adapter.display_name, fields, ExtractionMethod.HTTP, source_url=product_url
-        )
-        return row, html if capture_product_html else None, html
-    except ExtractionFailure as e:
-        last_error = str(e)
-        logger.info("%s M1 failed: %s", adapter.display_name, e)
+    # Stage 1: basic scraping
+    if not skip_http:
+        try:
+            fields, html = extract_with_http(adapter, product_url)
+            row = ProductRow.from_fields(
+                adapter.display_name, fields, ExtractionMethod.HTTP, source_url=product_url
+            )
+            logger.info("%s PDP via stage 1 %s", adapter.display_name, _STAGE_LABELS[0])
+            return row, html if capture_product_html else None, html
+        except ExtractionFailure as e:
+            last_error = str(e)
+            logger.info("%s stage 1 failed: %s", adapter.display_name, e)
 
+    # Stage 2: browser-based scraping
     try:
-        fields, html = extract_with_playwright(adapter, product_url, proxy_url=proxy_url)
+        fields, html = extract_with_playwright(adapter, product_url)
         cached_html = html
         row = ProductRow.from_fields(
             adapter.display_name, fields, ExtractionMethod.PLAYWRIGHT, source_url=product_url
         )
+        logger.info("%s PDP via stage 2 %s", adapter.display_name, _STAGE_LABELS[1])
         return row, html if capture_product_html else None, cached_html
     except ExtractionFailure as e:
         last_error = str(e)
-        logger.info("%s M2 failed: %s", adapter.display_name, e)
+        logger.info("%s stage 2 failed: %s", adapter.display_name, e)
 
+    # Stage 3: LLM-based extraction (reuse Playwright HTML when available)
     if cached_html:
         try:
             fields = extract_with_llm(cached_html, product_url)
             row = ProductRow.from_fields(
                 adapter.display_name, fields, ExtractionMethod.LLM, source_url=product_url
             )
+            logger.info("%s PDP via stage 3 %s", adapter.display_name, _STAGE_LABELS[2])
             return row, cached_html if capture_product_html else None, cached_html
         except ExtractionFailure as e:
             last_error = str(e)
-            logger.info("%s M3 failed: %s", adapter.display_name, e)
+            logger.info("%s stage 3 failed: %s", adapter.display_name, e)
     else:
         try:
             from extraction.playwright_extract import fetch_html_playwright
 
-            cached_html = fetch_html_playwright(product_url, proxy_url=proxy_url)
+            cached_html = fetch_html_playwright(product_url)
             fields = extract_with_llm(cached_html, product_url)
             row = ProductRow.from_fields(
                 adapter.display_name, fields, ExtractionMethod.LLM, source_url=product_url
             )
+            logger.info("%s PDP via stage 3 %s", adapter.display_name, _STAGE_LABELS[2])
             return row, cached_html if capture_product_html else None, cached_html
         except ExtractionFailure as e:
             last_error = str(e)
-            logger.info("%s M3 failed: %s", adapter.display_name, e)
+            logger.info("%s stage 3 failed: %s", adapter.display_name, e)
 
+    # Stage 4: Firecrawl API
     try:
         fields = extract_with_firecrawl(product_url)
         row = ProductRow.from_fields(
             adapter.display_name, fields, ExtractionMethod.FIRECRAWL, source_url=product_url
         )
+        logger.info("%s PDP via stage 4 %s", adapter.display_name, _STAGE_LABELS[3])
         return row, None, cached_html
     except ExtractionFailure as e:
         last_error = str(e)
-        logger.info("%s M4 failed: %s", adapter.display_name, e)
-
-    if not cached_html:
-        try:
-            from extraction.firecrawl_extract import fetch_html_firecrawl
-
-            cached_html = fetch_html_firecrawl(product_url, wait_ms=6_000)
-        except ExtractionFailure:
-            pass
+        logger.info("%s stage 4 failed: %s", adapter.display_name, e)
 
     row = ProductRow.failed(adapter.display_name)
-    logger.warning("%s all methods failed: %s", adapter.display_name, last_error)
+    logger.warning("%s all pipeline stages failed: %s", adapter.display_name, last_error)
     return row, None, cached_html
 
 
-def _retry_usa_geo_for_price(
+def run_extraction_pipeline_price_retry(
     adapter: SiteAdapter,
     product_url: str,
     *,
-    capture_product_html: bool,
-) -> tuple[ProductRow, str | None] | None:
-    proxy = SETTINGS.usa_http_proxy
-    if not proxy or not SETTINGS.usa_geo_retry_enabled:
-        return None
-
+    capture_product_html: bool = False,
+) -> tuple[ProductRow, str | None]:
+    """Re-run stages 2→4 after LLM price verify rejected stage 1."""
     logger.info(
-        "%s retrying PDP via USA proxy for price (geo may hide pricing outside US)",
+        "%s retrying PDP pipeline after price reject (stages 2–4)",
         adapter.display_name,
     )
     row, html, _ = _run_core_pipeline(
         adapter,
         product_url,
         capture_product_html=capture_product_html,
-        proxy_url=proxy,
+        skip_http=True,
     )
-    if _row_has_price(row):
-        if row.method == ExtractionMethod.HTTP.value:
-            row = ProductRow(
-                website=row.website,
-                product_title=row.product_title,
-                price=row.price,
-                average_rating=row.average_rating,
-                review_count=row.review_count,
-                status=row.status,
-                method=f"{row.method}+usa",
-                source_url=row.source_url,
-                serp_html_path=row.serp_html_path,
-                product_html_path=row.product_html_path,
-            )
-        return row, html
-    return None
+    return row, html
 
 
 def run_extraction_pipeline(
@@ -142,28 +147,10 @@ def run_extraction_pipeline(
     *,
     capture_product_html: bool = False,
 ) -> tuple[ProductRow, str | None]:
-    """Return ``(row, product_html)``; retries through US proxy when price is missing."""
+    """Return ``(row, product_html)`` using the four-stage PDP pipeline."""
     row, html, _ = _run_core_pipeline(
         adapter,
         product_url,
         capture_product_html=capture_product_html,
-        proxy_url=None,
     )
-    if _row_has_price(row):
-        return row, html
-
-    if row.status == "Success" and row.price == "N/A":
-        retry = _retry_usa_geo_for_price(
-            adapter, product_url, capture_product_html=capture_product_html
-        )
-        if retry:
-            return retry
-
-    if row.status == "Failed":
-        retry = _retry_usa_geo_for_price(
-            adapter, product_url, capture_product_html=capture_product_html
-        )
-        if retry:
-            return retry
-
     return row, html

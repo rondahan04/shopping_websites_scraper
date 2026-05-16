@@ -1,4 +1,4 @@
-"""Method 3: LLM structured extraction from page text."""
+"""Stage 3 — LLM-based extraction from visible page text."""
 
 from __future__ import annotations
 

@@ -5,10 +5,12 @@ from __future__ import annotations
 from urllib.parse import urlparse
 
 from config import SETTINGS
+from matching.condition import condition_score_penalty
 from matching.normalize import (
     bundle_penalty,
     has_accessory_conflict,
     has_chip_generation_mismatch,
+    has_earbuds_vs_headphones_conflict,
     has_model_code_mismatch,
     has_year_conflict,
     model_token_recall,
@@ -24,6 +26,8 @@ def score_title(query: str, title: str) -> tuple[float, dict]:
 
     if has_accessory_conflict(qn, tn):
         return 0.0, {"filtered": "accessory"}
+    if has_earbuds_vs_headphones_conflict(qn, tn):
+        return 0.0, {"filtered": "earbuds_vs_headphones"}
     if has_model_code_mismatch(qn, tn):
         return 0.0, {"filtered": "model_code"}
     if has_chip_generation_mismatch(qn, tn):
@@ -41,12 +45,14 @@ def score_title(query: str, title: str) -> tuple[float, dict]:
     elif qn.years and tn.years and qn.years[0] not in tn.years:
         year_bonus = -10.0
 
+    condition_penalty = condition_score_penalty(query, title)
     score = (
         0.55 * wratio
         + 0.25 * token_set
         + 0.15 * recall
         + 0.05 * year_bonus
         - bundle_penalty(qn, tn)
+        - condition_penalty
     )
     score = max(0.0, min(100.0, score))
     return score, {
@@ -54,6 +60,7 @@ def score_title(query: str, title: str) -> tuple[float, dict]:
         "token_set": token_set,
         "model_recall": recall,
         "year_bonus": year_bonus,
+        "condition_penalty": condition_penalty,
     }
 
 

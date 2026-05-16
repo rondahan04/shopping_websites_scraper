@@ -7,6 +7,7 @@ import logging
 import httpx
 
 from config import SETTINGS
+from utils.browser_profiles import build_http_headers, pick_browser_profile
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +20,7 @@ def pdp_url_reachable(url: str, *, timeout_s: float | None = None) -> bool:
     """
     if not url.startswith("http"):
         return False
-    hdrs = {
-        "User-Agent": SETTINGS.user_agent,
-        "Referer": "https://www.google.com/",
-    }
+    hdrs = build_http_headers(pick_browser_profile(), referer="https://www.google.com/")
     timeout = float(timeout_s if timeout_s is not None else min(SETTINGS.product_timeout_s, 8.0))
     try:
         with httpx.Client(follow_redirects=True, timeout=timeout, headers=hdrs) as client:

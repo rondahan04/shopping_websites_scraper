@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 import httpx
 
 from config import SETTINGS
+from utils.browser_profiles import build_http_headers, pick_browser_profile
 
 logger = logging.getLogger(__name__)
 
@@ -18,10 +19,7 @@ def amazon_resolved_product_path(candidate_url: str) -> str | None:
     Needed because search tiles often advertise ``/dp/ASIN/ref=…`` without the slug
     that reveals ``…/Apple-MacBook-Memory-…/dp/…`` RAM SKUs after redirect.
     """
-    hdrs = {
-        "User-Agent": SETTINGS.user_agent,
-        "Referer": "https://www.google.com/",
-    }
+    hdrs = build_http_headers(pick_browser_profile(), referer="https://www.google.com/")
     timeout = float(min(max(SETTINGS.product_timeout_s, 6.0), 15.0))
     try:
         with httpx.Client(follow_redirects=True, timeout=timeout, headers=hdrs) as c:

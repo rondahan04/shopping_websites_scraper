@@ -33,6 +33,17 @@ class SiteAdapter(ABC):
     def bot_check_patterns(self) -> list[str]:
         return []
 
+    def page_ready_selectors(self) -> list[str]:
+        """CSS selectors for Playwright explicit waits (first match wins)."""
+        return [
+            "main",
+            "h1",
+            "#productTitle",
+            "[data-testid='product-title']",
+            ".sku-title",
+            "[itemprop='name']",
+        ]
+
     @abstractmethod
     def parse_product(self, html: str, url: str) -> ProductFields: ...
 

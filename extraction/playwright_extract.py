@@ -1,13 +1,16 @@
-"""Method 2: Playwright headless browser extraction."""
+"""Stage 2 — browser-based scraping: Playwright headless browser + BeautifulSoup."""
 
 from __future__ import annotations
 
 import threading
 from typing import Any
+from urllib.parse import urlparse
 
 from config import SETTINGS
 from models import ExtractionFailure, ExtractionMethod, ProductFields
 from sites.base import SiteAdapter
+from utils.browser_profiles import build_http_headers, pick_browser_profile
+from utils.human_behavior import humanize_after_navigation
 from validation.fields import is_bot_page, validate_product_fields
 
 _thread_local = threading.local()
@@ -47,10 +50,11 @@ def shutdown_browser() -> None:
     _thread_local.playwright = None
 
 
-def _playwright_proxy(proxy_url: str | None) -> dict[str, str] | None:
-    if not proxy_url:
-        return None
-    return {"server": proxy_url}
+def _referer_for_url(url: str) -> str:
+    parsed = urlparse(url)
+    if parsed.scheme and parsed.netloc:
+        return f"{parsed.scheme}://{parsed.netloc}/"
+    return "https://www.google.com/"
 
 
 def fetch_html_playwright(
@@ -58,21 +62,31 @@ def fetch_html_playwright(
     timeout_ms: int | None = None,
     *,
     strict_bot_check: bool = True,
-    proxy_url: str | None = None,
+    ready_selectors: list[str] | tuple[str, ...] | None = None,
 ) -> str:
     timeout_ms = timeout_ms or SETTINGS.playwright_timeout_ms
     _, browser = _get_browser_context()
+    profile = pick_browser_profile()
+    referer = _referer_for_url(url)
+    extra_headers = build_http_headers(profile, referer=referer)
+    # Playwright sets User-Agent via context; pass the rest as extra HTTP headers.
+    extra_http = {k: v for k, v in extra_headers.items() if k.lower() != "user-agent"}
     context = browser.new_context(
-        user_agent=SETTINGS.user_agent,
-        locale="en-US",
-        proxy=_playwright_proxy(proxy_url),
+        user_agent=profile.user_agent,
+        locale=profile.accept_language.split(",")[0].strip() or "en-US",
+        extra_http_headers=extra_http,
+        viewport={"width": 1366, "height": 768},
     )
     page = context.new_page()
     try:
         response = page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
         if response and response.status in (403, 429):
             raise ExtractionFailure(f"http {response.status}", ExtractionMethod.PLAYWRIGHT)
-        page.wait_for_timeout(2000)
+        humanize_after_navigation(
+            page,
+            ready_selectors=ready_selectors,
+            timeout_ms=min(timeout_ms, 20_000),
+        )
         html = page.content()
     except ExtractionFailure:
         raise
@@ -91,10 +105,8 @@ def fetch_html_playwright(
 def extract_with_playwright(
     adapter: SiteAdapter,
     url: str,
-    *,
-    proxy_url: str | None = None,
 ) -> tuple[ProductFields, str]:
-    html = fetch_html_playwright(url, proxy_url=proxy_url)
+    html = fetch_html_playwright(url, ready_selectors=adapter.page_ready_selectors())
     if is_bot_page(html, adapter.bot_check_patterns()):
         raise ExtractionFailure("bot protection detected", ExtractionMethod.PLAYWRIGHT)
     fields = adapter.parse_product(html, url)

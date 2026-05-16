@@ -9,6 +9,7 @@ from decimal import Decimal
 
 from config import SETTINGS
 from extraction.llm_price_benchmark import llm_reference_prices_for_query, relative_price_gap
+from extraction.llm_price_verify import llm_verify_scraped_price
 from extraction.llm_site_search_plan import SiteSearchPlan, resolve_site_search_plans
 
 try:
@@ -124,18 +125,32 @@ def rescrape_price_gap_outliers(
     for i, row in enumerate(rows):
         if not row_has_scraped_price(row):
             continue
-        ref = references.get(row.website)
-        if ref is None or ref <= 0:
-            continue
         found = parse_price(row.price)
         if found is None or found <= 0:
             continue
-        gap = relative_price_gap(found, ref)
-        if gap > thresh:
-            outlier_indices.append(i)
-            gap_notes.append(
-                f"{row.website} scraped=${found:,.2f} llm=${ref:,.2f} gap={gap * 100:.0f}%"
+        ref = references.get(row.website)
+        if ref is not None and ref > 0:
+            gap = relative_price_gap(found, ref)
+            if gap > thresh:
+                outlier_indices.append(i)
+                gap_notes.append(
+                    f"{row.website} scraped=${found:,.2f} llm=${ref:,.2f} gap={gap * 100:.0f}%"
+                )
+            continue
+        # No benchmark reference (e.g. Amazon=?). Per-row verify when site-level verify is off.
+        if not SETTINGS.llm_price_verify_enabled:
+            verify = llm_verify_scraped_price(
+                user_query=query,
+                product_title=row.product_title,
+                scraped_price=found,
+                retailer=row.website,
+                source_url=row.source_url,
             )
+            if not verify.plausible:
+                outlier_indices.append(i)
+                gap_notes.append(
+                    f"{row.website} scraped=${found:,.2f} llm-verify rejected: {verify.reason}"
+                )
 
     if not outlier_indices:
         logger.info(

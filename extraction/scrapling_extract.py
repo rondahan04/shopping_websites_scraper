@@ -1,4 +1,4 @@
-"""Method 1: HTTP fetch (httpx) + BeautifulSoup parsing."""
+"""Stage 1 — basic scraping: HTTP fetch (httpx) + BeautifulSoup parsing."""
 
 from __future__ import annotations
 
@@ -11,12 +11,14 @@ from validation.fields import validate_product_fields
 def extract_with_http(
     adapter: SiteAdapter,
     url: str,
-    *,
-    proxy_url: str | None = None,
 ) -> tuple[ProductFields, str]:
     patterns = adapter.bot_check_patterns()
     try:
-        html, _ = fetch_html_http(url, extra_patterns=patterns, proxy_url=proxy_url)
+        html, _ = fetch_html_http(
+            url,
+            extra_patterns=patterns,
+            settle_after_load=True,
+        )
     except ExtractionFailure:
         raise
     except Exception as e:
@@ -30,8 +32,6 @@ def extract_with_http(
 def extract_with_scrapling(
     adapter: SiteAdapter,
     url: str,
-    *,
-    proxy_url: str | None = None,
 ) -> tuple[ProductFields, str]:
     """Backward-compatible name; M1 is httpx + BeautifulSoup, not Scrapling."""
-    return extract_with_http(adapter, url, proxy_url=proxy_url)
+    return extract_with_http(adapter, url)

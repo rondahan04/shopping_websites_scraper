@@ -9,11 +9,13 @@ from typing import Literal
 
 
 class ExtractionMethod(str, Enum):
-    HTTP = "http"
-    SCRAPLING = "scrapling"  # deprecated label; M1 uses HTTP
-    PLAYWRIGHT = "playwright"
-    LLM = "llm"
-    FIRECRAWL = "firecrawl"
+    """Which pipeline stage produced a successful extraction."""
+
+    HTTP = "http"  # Stage 1: httpx + BeautifulSoup (basic scraping)
+    SCRAPLING = "scrapling"  # legacy alias for HTTP
+    PLAYWRIGHT = "playwright"  # Stage 2: browser-based scraping
+    LLM = "llm"  # Stage 3: LLM structured extraction from page text
+    FIRECRAWL = "firecrawl"  # Stage 4: Firecrawl API
     NA = "N/A"
 
 

@@ -1,15 +1,55 @@
-"""Method 4: Firecrawl API extraction."""
+"""Stage 4 — Firecrawl API (external scraping / extraction service)."""
 
 from __future__ import annotations
 
 import json
+import logging
+import time
 
 import httpx
 
 from config import SETTINGS
+from utils.page_settle import firecrawl_wait_ms
+
+logger = logging.getLogger(__name__)
 from models import ExtractionFailure, ExtractionMethod, ProductFields
 from utils.parsing import parse_price, parse_rating, parse_review_count
 from validation.fields import validate_product_fields
+
+def _firecrawl_post(payload: dict, *, retries: int = 2) -> dict:
+    """POST to Firecrawl with one retry on transient 5xx."""
+    headers = {
+        "Authorization": f"Bearer {SETTINGS.firecrawl_api_key}",
+        "Content-Type": "application/json",
+    }
+    last_err: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            with httpx.Client(timeout=60.0) as client:
+                resp = client.post(SETTINGS.firecrawl_api_url, headers=headers, json=payload)
+            if resp.status_code in (403, 429):
+                raise ExtractionFailure(
+                    f"firecrawl http {resp.status_code}", ExtractionMethod.FIRECRAWL
+                )
+            if resp.status_code >= 500 and attempt < retries:
+                logger.info("firecrawl %s, retry %d", resp.status_code, attempt + 1)
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            resp.raise_for_status()
+            return resp.json()
+        except ExtractionFailure:
+            raise
+        except Exception as e:
+            last_err = e
+            if attempt < retries:
+                logger.info("firecrawl request error, retry %d: %s", attempt + 1, e)
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            raise ExtractionFailure(
+                f"firecrawl request failed: {e}", ExtractionMethod.FIRECRAWL
+            ) from e
+    raise ExtractionFailure(f"firecrawl request failed: {last_err}", ExtractionMethod.FIRECRAWL)
+
 
 SCHEMA = {
     "type": "object",
@@ -26,10 +66,6 @@ def extract_with_firecrawl(url: str) -> ProductFields:
     if not SETTINGS.firecrawl_api_key:
         raise ExtractionFailure("FIRECRAWL_API_KEY not set", ExtractionMethod.FIRECRAWL)
 
-    headers = {
-        "Authorization": f"Bearer {SETTINGS.firecrawl_api_key}",
-        "Content-Type": "application/json",
-    }
     payload = {
         "url": url,
         "formats": ["extract"],
@@ -39,18 +75,7 @@ def extract_with_firecrawl(url: str) -> ProductFields:
         },
     }
 
-    try:
-        with httpx.Client(timeout=60.0) as client:
-            resp = client.post(SETTINGS.firecrawl_api_url, headers=headers, json=payload)
-        if resp.status_code in (403, 429):
-            raise ExtractionFailure(f"firecrawl http {resp.status_code}", ExtractionMethod.FIRECRAWL)
-        resp.raise_for_status()
-        body = resp.json()
-    except ExtractionFailure:
-        raise
-    except Exception as e:
-        raise ExtractionFailure(f"firecrawl request failed: {e}", ExtractionMethod.FIRECRAWL) from e
-
+    body = _firecrawl_post(payload)
     data = body.get("data") or {}
     extracted = data.get("extract") or data.get("json") or {}
     if isinstance(extracted, str):
@@ -86,29 +111,20 @@ def fetch_html_firecrawl(url: str, *, wait_ms: int | None = None) -> str:
     if not SETTINGS.firecrawl_api_key:
         raise ExtractionFailure("FIRECRAWL_API_KEY not set", ExtractionMethod.FIRECRAWL)
 
-    headers = {
-        "Authorization": f"Bearer {SETTINGS.firecrawl_api_key}",
-        "Content-Type": "application/json",
-    }
     payload: dict = {"url": url, "formats": ["html"]}
     if wait_ms is not None:
-        payload["waitFor"] = wait_ms
+        payload["waitFor"] = firecrawl_wait_ms(wait_ms)
     elif "bestbuy.com" in url.lower():
         # Best Buy SERP is a JS shell; allow the product grid to hydrate.
-        payload["waitFor"] = 8000
+        payload["waitFor"] = firecrawl_wait_ms(8000)
+    elif "walmart.com" in url.lower():
+        payload["waitFor"] = firecrawl_wait_ms(7000)
+    else:
+        floor = firecrawl_wait_ms(None)
+        if floor:
+            payload["waitFor"] = floor
 
-    try:
-        with httpx.Client(timeout=60.0) as client:
-            resp = client.post(SETTINGS.firecrawl_api_url, headers=headers, json=payload)
-        if resp.status_code in (403, 429):
-            raise ExtractionFailure(f"firecrawl http {resp.status_code}", ExtractionMethod.FIRECRAWL)
-        resp.raise_for_status()
-        body = resp.json()
-    except ExtractionFailure:
-        raise
-    except Exception as e:
-        raise ExtractionFailure(f"firecrawl fetch failed: {e}", ExtractionMethod.FIRECRAWL) from e
-
+    body = _firecrawl_post(payload)
     data = body.get("data") or {}
     html = data.get("html") or data.get("rawHtml") or ""
     if not html:

@@ -165,6 +165,41 @@ def has_peripheral_accessory_conflict(query_norm: NormalizedText, title_norm: No
     return False
 
 
+_EARBUD_MARKERS = ("earbud", "earbuds", "in-ear", "in ear", "true wireless")
+# Amazon ASINs that are QC Ultra earbuds but SERP titles often omit "earbuds".
+_AMAZON_EARBUD_ASINS = frozenset({"B0D6WCQWJS", "B0D6WBKCPD"})
+_OVEREAR_MARKERS = ("over-ear", "over ear", "over the ear", "around-ear", "around ear")
+
+
+def has_earbuds_vs_headphones_conflict(query_norm: NormalizedText, title_norm: NormalizedText) -> bool:
+    """Query targets over-ear headphones but listing title is clearly earbuds (or vice versa)."""
+    q = query_norm.normalized
+    t = title_norm.normalized
+    q_wants_headphones = "headphone" in q and "earbud" not in q
+    q_wants_earbuds = "earbud" in q and "headphone" not in q
+    t_is_earbuds = any(m in t for m in _EARBUD_MARKERS)
+    t_is_overear = any(m in t for m in _OVEREAR_MARKERS)
+    if q_wants_headphones and t_is_earbuds and not t_is_overear:
+        return True
+    if q_wants_earbuds and t_is_overear and not t_is_earbuds:
+        return True
+    return False
+
+
+def amazon_asin_from_url(url: str) -> str | None:
+    m = re.search(r"/dp/([A-Z0-9]{10})", url, re.I)
+    return m.group(1).upper() if m else None
+
+
+def is_amazon_earbuds_asin_for_headphone_query(query_norm: NormalizedText, url: str) -> bool:
+    """Block known earbud ASINs when the user query targets over-ear headphones."""
+    q = query_norm.normalized
+    if "headphone" not in q or "earbud" in q:
+        return False
+    asin = amazon_asin_from_url(url)
+    return bool(asin and asin in _AMAZON_EARBUD_ASINS)
+
+
 def has_accessory_conflict(query_norm: NormalizedText, title_norm: NormalizedText) -> bool:
     if has_peripheral_accessory_conflict(query_norm, title_norm):
         return True

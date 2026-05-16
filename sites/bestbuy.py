@@ -87,6 +87,9 @@ class BestBuyAdapter(SiteAdapter):
     display_name = "BestBuy.com"
     domain = "bestbuy.com"
 
+    def page_ready_selectors(self) -> list[str]:
+        return [".sku-title", "h1", "main", "[data-testid='product-title']"]
+
     def build_search_url(self, query: str) -> str:
         return f"https://www.bestbuy.com/site/searchpage.jsp?st={self.encoded_query(query)}"
 

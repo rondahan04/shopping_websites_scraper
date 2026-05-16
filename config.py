@@ -20,16 +20,22 @@ os.environ.setdefault(
 load_dotenv(_PROJECT_ROOT / ".env")
 load_dotenv(_PROJECT_ROOT.parent / ".env")
 
+# Random human-like pause range (seconds) after navigation / Firecrawl waitFor.
+SETTLE_DELAY_MIN_S: float = 3.0
+SETTLE_DELAY_MAX_S: float = 8.0
+
 
 @dataclass(frozen=True)
 class Settings:
     user_agent: str = (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     )
     search_timeout_s: float = 20.0
     product_timeout_s: float = 30.0
     playwright_timeout_ms: int = 35_000
+    settle_delay_min_s: float = SETTLE_DELAY_MIN_S
+    settle_delay_max_s: float = SETTLE_DELAY_MAX_S
     min_match_score: float = 48.0
     # When the best SERP row is slightly below min_match_score but model tokens align, still accept.
     min_match_score_soft_floor: float = 42.0
@@ -44,9 +50,10 @@ class Settings:
     # Rescrape when scraped price differs from LLM reference by more than this (e.g. 0.20 = 20%).
     price_gap_rescrape_threshold: float = 0.20
     price_gap_rescrape_enabled: bool = True
-    # HTTP(S) proxy with US egress — retried when price is missing (geo-blocked PDPs).
-    usa_http_proxy: str | None = None
-    usa_geo_retry_enabled: bool = True
+    # Before PDP extract: GPT compares SERP title to LLM plan product_name.
+    llm_title_verify_enabled: bool = True
+    # After PDP extract: GPT judges whether scraped price is a plausible buy-box amount.
+    llm_price_verify_enabled: bool = True
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -64,23 +71,33 @@ class Settings:
         except ValueError:
             soft_floor = 42.0
         soft_floor = min(soft_floor, 47.9)  # must stay strictly below min_match_score default
-        usa_proxy = (
-            os.getenv("USA_HTTP_PROXY")
-            or os.getenv("US_HTTP_PROXY")
-            or os.getenv("USA_PROXY_URL")
-            or ""
-        ).strip() or None
-        usa_retry_env = os.getenv("USA_GEO_RETRY", "true").strip().lower()
-        usa_retry_on = usa_retry_env not in ("0", "false", "no", "off")
+        title_verify_env = os.getenv("LLM_TITLE_VERIFY", "true").strip().lower()
+        title_verify_on = title_verify_env not in ("0", "false", "no", "off")
+        price_verify_env = os.getenv("LLM_PRICE_VERIFY", "true").strip().lower()
+        price_verify_on = price_verify_env not in ("0", "false", "no", "off")
+        min_raw = os.getenv("PAGE_SETTLE_MIN_S", "").strip()
+        max_raw = os.getenv("PAGE_SETTLE_MAX_S", "").strip()
+        try:
+            settle_min = float(min_raw) if min_raw else SETTLE_DELAY_MIN_S
+        except ValueError:
+            settle_min = SETTLE_DELAY_MIN_S
+        try:
+            settle_max = float(max_raw) if max_raw else SETTLE_DELAY_MAX_S
+        except ValueError:
+            settle_max = SETTLE_DELAY_MAX_S
+        if settle_min > settle_max:
+            settle_min, settle_max = settle_max, settle_min
         return cls(
             openai_api_key=os.getenv("OPENAI_API_KEY"),
             firecrawl_api_key=firecrawl_key,
             openai_model=os.getenv("OPENAI_MODEL", "gpt-5.5"),
             price_gap_rescrape_threshold=price_gap_threshold,
             price_gap_rescrape_enabled=rescrape_on,
+            llm_title_verify_enabled=title_verify_on,
+            llm_price_verify_enabled=price_verify_on,
             min_match_score_soft_floor=soft_floor,
-            usa_http_proxy=usa_proxy,
-            usa_geo_retry_enabled=usa_retry_on,
+            settle_delay_min_s=settle_min,
+            settle_delay_max_s=settle_max,
         )
 
 

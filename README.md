@@ -1,6 +1,13 @@
 # Shopping Websites Scraper
 
-Searches **Amazon**, **Best Buy**, **Walmart**, and **Newegg** for a product query, picks the best title match per site, and extracts price, rating, and review count (HTTP/httpx → Playwright → LLM → Firecrawl fallback). If no price is found, retries via a US proxy when `USA_HTTP_PROXY` is set.
+Searches **Amazon**, **Best Buy**, **Walmart**, and **Newegg** for a product query, picks the best title match per site, and extracts price, rating, and review count using a **four-stage fallback pipeline** (same order for SERP and product pages):
+
+1. **Basic scraping** — HTTP GET (httpx) + BeautifulSoup parsing  
+2. **Browser-based scraping** — Playwright loads the page; HTML parsed with BeautifulSoup  
+3. **LLM-based extraction** — visible page text sent to an LLM for structured fields  
+4. **Firecrawl** — Firecrawl API when local methods fail  
+
+Each stage runs only if the previous one did not succeed.
 
 ## Setup
 
