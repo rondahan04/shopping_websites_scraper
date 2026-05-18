@@ -1,8 +1,9 @@
 "use client";
 
-import Image from "next/image";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { WaitGame } from "@/components/WaitGame";
+import { MatrixBackground } from "@/components/MatrixBackground";
+import { ScrapeGoatLogo } from "@/components/ScrapeGoatLogo";
 import {
   getSearchJob,
   startSearchJob,
@@ -234,20 +235,22 @@ export default function HomePage() {
   );
 
   return (
+    <>
+    <MatrixBackground />
     <main>
       <header className="site-header">
-        <Image
-          src="/scrapegoat-logo.png"
-          alt="ScrapeGoat logo"
-          width={56}
-          height={56}
-          priority
-        />
-        <div>
+        <ScrapeGoatLogo size={56} />
+        <div className="site-header-text">
+          <div className="terminal-bar">
+            <span className="terminal-dot dot-red" aria-hidden />
+            <span className="terminal-dot dot-yellow" aria-hidden />
+            <span className="terminal-dot dot-green" aria-hidden />
+            <span className="terminal-session">scrapegoat — session active</span>
+          </div>
           <h1 className="brand-title">ScrapeGoat</h1>
           <p className="brand-tagline">
-            One search, four big stores. We pull live prices, star ratings, and
-            review counts so you can compare without opening a dozen tabs.
+            <span className="comment-slash">// </span>
+            one search, four big stores — live prices, ratings &amp; reviews
           </p>
         </div>
       </header>
@@ -255,21 +258,28 @@ export default function HomePage() {
       <section className="card">
         <form className="search-form" onSubmit={onSubmit}>
           <label htmlFor="product-query">
-            What do you want to compare?
-            <input
-              id="product-query"
-              name="query"
-              type="search"
-              placeholder="e.g. Bose QC Ultra headphones"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              disabled={loading}
-              autoComplete="off"
-              required
-            />
+            <span className="search-label-text">// what are you comparing?</span>
+            <div className="search-input-wrap">
+              <span className="search-prefix" aria-hidden>$</span>
+              <input
+                id="product-query"
+                name="query"
+                type="search"
+                placeholder="e.g. Bose QC Ultra headphones"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                disabled={loading}
+                autoComplete="off"
+                required
+              />
+            </div>
           </label>
-          <button type="submit" disabled={loading || !query.trim()}>
-            {loading ? "Searching…" : "Compare prices"}
+          <button type="submit" disabled={loading || !query.trim()} className="scan-btn">
+            {loading ? (
+              <span>&gt;_ scanning<span className="scan-ellipsis">...</span></span>
+            ) : (
+              <span>&gt;_ scan</span>
+            )}
           </button>
         </form>
 
@@ -304,5 +314,6 @@ export default function HomePage() {
         ScrapeGoat checks Amazon, Walmart, Best Buy, and Newegg when you search.
       </footer>
     </main>
+    </>
   );
 }
