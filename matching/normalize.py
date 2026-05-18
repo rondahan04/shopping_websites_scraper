@@ -71,6 +71,8 @@ ACCESSORY_SUBSTRINGS: tuple[str, ...] = (
     "memory foam ear pads",
     "earmuff replacement",
     "replacement earmuffs",
+    "replacement ear",
+    "noise isolation foam",
     "tv mount",
     "dash mount",
     "monitor mount",

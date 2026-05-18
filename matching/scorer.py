@@ -93,9 +93,11 @@ def pick_best_match(
             tn = normalize_text(f"{r.title} {path}")
             if (
                 has_accessory_conflict(qn_static, tn)
+                or has_earbuds_vs_headphones_conflict(qn_static, tn)
                 or has_bundle_conflict(qn_static, tn, r.url)
                 or has_screen_size_mismatch(qn_static, tn, r.url)
                 or has_model_code_mismatch(qn_static, tn)
+                or has_chip_generation_mismatch(qn_static, tn)
                 or has_year_conflict(qn_static, tn)
             ):
                 continue
