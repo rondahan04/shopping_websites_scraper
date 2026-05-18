@@ -16,5 +16,12 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.34.0
 pydantic>=2.10.0
 
+# Review analyzer + Visual dupe finder
+transformers>=4.47.0        # CLIP model (CLIPModel, CLIPProcessor); 4.47 adds flash-attn2 support
+torch>=2.6.0                # Required backend for transformers; 2.6 ships torch.compile stability fixes
+Pillow>=11.1.0              # PIL image loading / resizing; 11.x drops deprecated APIs from 9.x
+chromadb>=0.6.0             # Local vector DB for CLIP embeddings; 0.6 rewrites the HNSW index layer
+requests>=2.32.0            # HTTP image downloads in visual_dupe_finder
+
 # Tests
 pytest>=8.0.0
