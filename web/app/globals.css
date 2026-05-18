@@ -90,8 +90,8 @@ body::before {
   width: 220%;
   height: 60vh;
   background-image:
-    linear-gradient(rgba(126, 224, 208, 0.1) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(126, 224, 208, 0.1) 1px, transparent 1px);
+    linear-gradient(rgba(0, 255, 65, 0.45) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 65, 0.45) 1px, transparent 1px);
   background-size: 70px 70px;
   transform: perspective(700px) rotateX(78deg);
   transform-origin: 50% 100%;

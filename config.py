@@ -43,7 +43,7 @@ class Settings:
     max_serp_results: int = 15
     llm_max_chars: int = 20_000
     openai_api_key: str | None = None
-    openai_model: str = "gpt-5.5"
+    openai_model: str = "gpt-5.4-mini"
     firecrawl_api_key: str | None = None
     firecrawl_api_url: str = "https://api.firecrawl.dev/v1/scrape"
     max_workers: int = 4
@@ -90,7 +90,7 @@ class Settings:
         return cls(
             openai_api_key=os.getenv("OPENAI_API_KEY"),
             firecrawl_api_key=firecrawl_key,
-            openai_model=os.getenv("OPENAI_MODEL", "gpt-5.5"),
+            openai_model=os.getenv("OPENAI_MODEL", "gpt-5.4-mini"),
             price_gap_rescrape_threshold=price_gap_threshold,
             price_gap_rescrape_enabled=rescrape_on,
             llm_title_verify_enabled=title_verify_on,
