@@ -37,8 +37,21 @@ def pdp_url_reachable(url: str, *, timeout_s: float | None = None) -> bool:
                 return False
             final = str(resp.url)
             if _url_is_retailer_block_page(final):
-                logger.info("PDP URL blocked by retailer: %s", final[:120])
-                return False
+                # Some retailers (e.g. Walmart) redirect HEAD requests to a
+                # /blocked page while still serving GET normally.  Retry once
+                # with GET on the original URL before giving up.
+                try:
+                    get_resp = client.get(url, timeout=timeout)
+                    get_final = str(get_resp.url)
+                    if _url_is_retailer_block_page(get_final):
+                        logger.info("PDP URL blocked by retailer: %s", get_final[:120])
+                        return False
+                    if get_resp.status_code in {404, 410}:
+                        return False
+                    return True
+                except (httpx.TimeoutException, httpx.RequestError, OSError):
+                    # GET also inconclusive — treat as reachable so Firecrawl can try.
+                    return True
             return True
     except (httpx.TimeoutException, httpx.RequestError, OSError) as e:
         logger.debug("PDP URL check inconclusive for %s: %s", url[:120], e)
