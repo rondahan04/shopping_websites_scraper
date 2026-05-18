@@ -52,8 +52,12 @@ ACCESSORY_SUBSTRINGS: tuple[str, ...] = (
     "replacement earpad",
     "replacement earpads",
     "earpads replacement",
+    "ear pads replacement",  # spaced variant not caught by "earpads replacement"
+    "ear pad replacement",
     "earpad for",
     "earpads for",
+    "ear pads for",
+    "ear pad for",
     "ear cushions",
     "ear pads cushions",
     "replacement cups",
@@ -311,6 +315,52 @@ def has_model_code_mismatch(query_norm: NormalizedText, title_norm: NormalizedTe
         return False
     hay = title_norm.normalized
     return any(code.lower() not in hay for code in codes)
+
+
+_VARIANT_SUFFIX_RE = re.compile(
+    r"\b(ultra|plus|se|lite|neo|go|mini|max|pro|elite|air|slim)\b", re.I
+)
+_SERIES_NUM_RE = re.compile(r"(?<![a-z0-9])(\d{2,3})(?![a-z0-9])")
+
+
+def has_numeric_series_mismatch(query_norm: NormalizedText, title_norm: NormalizedText) -> bool:
+    """Detect series-number mismatches like 'QuietComfort 45' vs 'QuietComfort Ultra'.
+
+    Fires only when:
+    1. The query has a 2-3 digit standalone series number (e.g. 45, 700, 55).
+    2. That number is absent from the title.
+    3. The title instead has a different 2-3 digit number OR a named variant word
+       (ultra/plus/se/pro/…) — confirming it's a competing model, not just a
+       longer product description.
+    4. Both share enough of a common prefix (first significant word) so we don't
+       fire across completely unrelated products.
+
+    Does NOT fire for 4-digit numbers (years, handled elsewhere) or for numbers
+    that are part of alphanumeric codes already caught by has_model_code_mismatch.
+    """
+    q = query_norm.normalized
+    t = title_norm.normalized
+
+    q_nums = _SERIES_NUM_RE.findall(q)
+    if not q_nums:
+        return False
+
+    # Require both texts to share a common first-word anchor (same brand/family).
+    q_words = [w for w in q.split() if len(w) > 2 and not w.isdigit()]
+    t_words_set = set(t.split())
+    if not q_words or q_words[0] not in t_words_set:
+        return False
+
+    t_nums = set(_SERIES_NUM_RE.findall(t))
+    t_has_variant = bool(_VARIANT_SUFFIX_RE.search(t))
+
+    for num in q_nums:
+        if num in t:
+            continue  # same number present — no mismatch for this token
+        if t_nums or t_has_variant:
+            return True
+
+    return False
 
 
 def has_year_conflict(query_norm: NormalizedText, title_norm: NormalizedText) -> bool:

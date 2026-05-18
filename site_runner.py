@@ -31,6 +31,7 @@ from matching.normalize import (
     has_earbuds_vs_headphones_conflict,
     is_amazon_earbuds_asin_for_headphone_query,
     has_model_code_mismatch,
+    has_numeric_series_mismatch,
     has_screen_size_mismatch,
     normalize_text,
 )
@@ -370,6 +371,7 @@ def _listing_model_mismatch(query: str, title: str, url: str = "") -> bool:
     tn = normalize_text(title)
     return (
         has_model_code_mismatch(qn, tn)
+        or has_numeric_series_mismatch(qn, tn)
         or has_chip_generation_mismatch(qn, tn)
         or has_screen_size_mismatch(qn, tn, url)
         or has_bundle_conflict(qn, tn, url)
