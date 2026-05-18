@@ -355,7 +355,7 @@ def has_numeric_series_mismatch(query_norm: NormalizedText, title_norm: Normaliz
     t_has_variant = bool(_VARIANT_SUFFIX_RE.search(t))
 
     for num in q_nums:
-        if num in t:
+        if num in t_nums:
             continue  # same number present — no mismatch for this token
         if t_nums or t_has_variant:
             return True

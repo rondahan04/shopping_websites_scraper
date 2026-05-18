@@ -28,6 +28,8 @@ _ADDON_PRICE_CONTEXT_NEEDLES = (
     "applecare",
     "installment",
     "financing",
+    "coupon",
+    "promo",
 )
 
 
