@@ -52,6 +52,15 @@ function ProgressPanel({ job }: { job: JobStatus }) {
   );
 }
 
+type SortKey = "price" | "average_rating" | "review_count";
+type SortDir = "asc" | "desc";
+
+function parseNumeric(val: string): number | null {
+  if (val === "N/A") return null;
+  const n = parseFloat(val.replace(/[$,]/g, ""));
+  return isNaN(n) ? null : n;
+}
+
 function ResultsTable({
   data,
   inProgress = false,
@@ -61,6 +70,43 @@ function ResultsTable({
   inProgress?: boolean;
   storesDone?: number;
 }) {
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  function handleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
+  const rows = sortKey
+    ? [...data.rows].sort((a, b) => {
+        const av = parseNumeric(a[sortKey] as string);
+        const bv = parseNumeric(b[sortKey] as string);
+        if (av === null && bv === null) return 0;
+        if (av === null) return 1;
+        if (bv === null) return -1;
+        return sortDir === "asc" ? av - bv : bv - av;
+      })
+    : data.rows;
+
+  function SortTh({ col, label }: { col: SortKey; label: string }) {
+    const active = sortKey === col;
+    return (
+      <th
+        scope="col"
+        onClick={() => handleSort(col)}
+        style={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
+      >
+        {label}{" "}
+        {active ? (sortDir === "asc" ? "▲" : "▼") : <span style={{ opacity: 0.35 }}>▲</span>}
+      </th>
+    );
+  }
+
   return (
     <section className="results" aria-live="polite">
       <div className="results-header">
@@ -90,15 +136,15 @@ function ResultsTable({
             <tr>
               <th scope="col">Website</th>
               <th scope="col">Product title</th>
-              <th scope="col">Price</th>
-              <th scope="col">Average rating</th>
-              <th scope="col">Review count</th>
+              <SortTh col="price" label="Price" />
+              <SortTh col="average_rating" label="Average rating" />
+              <SortTh col="review_count" label="Review count" />
               <th scope="col">Method</th>
               <th scope="col">Product page</th>
             </tr>
           </thead>
           <tbody>
-            {data.rows.map((row) => {
+            {rows.map((row) => {
               const href = productLink(row.source_url);
               return (
                 <tr key={row.website}>

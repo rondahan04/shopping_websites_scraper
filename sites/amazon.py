@@ -253,7 +253,10 @@ def _amazon_best_dom_price(soup: BeautifulSoup) -> Decimal | None:
         if el:
             primary = _amazon_collect_valid_prices(el)
             if primary:
-                return max(primary)
+                # Use min: on multi-config pages the default SKU price is the lowest
+                # valid entry; coupon/financing spans are already filtered out by
+                # _amazon_collect_valid_prices, so min() is safe here.
+                return min(primary)
 
     # Collect from every present layout root. Stopping at the first match hid the real
     # cash price in ``#centerCol`` when ``#desktop_buybox`` only carried a financing line.
