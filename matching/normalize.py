@@ -108,6 +108,19 @@ DEVICE_QUERY_MARKERS: tuple[str, ...] = (
     "chromebook",
     "surface pro",
     "surface laptop",
+    # Audio devices — so case/cover/sleeve guard also fires for earbuds/headphones
+    "airpods",
+    "earbuds",
+    "headphone",
+    "headphones",
+    "earphones",
+    "speaker",
+    "soundbar",
+    "monitor",
+    "keyboard",
+    "mouse",
+    "webcam",
+    "microphone",
 )
 
 PERIPHERAL_ACCESSORY_MARKERS: tuple[str, ...] = (

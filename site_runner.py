@@ -7,6 +7,8 @@ from dataclasses import replace
 from pathlib import Path
 from urllib.parse import urlparse
 
+from rapidfuzz import fuzz as _fuzz
+
 from config import SETTINGS
 from extraction.llm_extract import parse_serp_with_llm
 from extraction.llm_price_verify import llm_verify_scraped_price
@@ -81,6 +83,21 @@ def _row_passes_price_verify(
             title[:72],
         )
         return False
+    # Non-LLM sanity check: extracted PDP title must share meaningful tokens with the
+    # query. A score < 30 means essentially none of the query words appear in the
+    # extracted title — this catches cases where Firecrawl receives wrong PDP content
+    # (e.g. Newegg returning a gaming monitor page for an AirPods Pro URL).
+    extracted_title = row.product_title if row.product_title and row.product_title not in ("N/A", "") else None
+    if extracted_title and extracted_title != serp_title:
+        overlap = _fuzz.token_set_ratio(user_query.lower(), extracted_title.lower())
+        if overlap < 30:
+            logger.warning(
+                "[%s] Rejecting extracted title (%.0f%% query overlap — likely wrong PDP content): %s",
+                adapter.display_name,
+                overlap,
+                extracted_title[:80],
+            )
+            return False
     found = parse_price(row.price)
     if found is None:
         return False
