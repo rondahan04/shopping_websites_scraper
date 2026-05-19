@@ -50,6 +50,8 @@ class ProductRow:
     source_url: str = "N/A"
     serp_html_path: str | None = None
     product_html_path: str | None = None
+    trust_label: str = "Unknown"
+    trust_reason: str = ""
 
     @classmethod
     def failed(cls, website: str) -> ProductRow:

@@ -13,6 +13,38 @@ import {
 } from "@/lib/api";
 import { formatScrapeMethod, productLink } from "@/lib/methodLabels";
 
+const TRUST_BADGE_CLASS: Record<string, string> = {
+  High: "trust-badge trust-badge-high",
+  Medium: "trust-badge trust-badge-medium",
+  Low: "trust-badge trust-badge-low",
+  Unknown: "trust-badge trust-badge-unknown",
+};
+
+function TrustVerdictCard({ data }: { data: SearchResponse }) {
+  return (
+    <section className="trust-verdict">
+      <p className="trust-verdict-header">// AI verdict — review trust analysis</p>
+      <div className="trust-verdict-grid">
+        {data.rows.map((row) => {
+          const label = row.trust_label || "Unknown";
+          const badgeClass = TRUST_BADGE_CLASS[label] ?? TRUST_BADGE_CLASS.Unknown;
+          return (
+            <div key={row.website} className="trust-card">
+              <div className="trust-card-site">{row.website}</div>
+              <span className={badgeClass}>{label}</span>
+              <p className="trust-card-reason">
+                {label === "Unknown"
+                  ? "Unavailable — no rating data scraped."
+                  : row.trust_reason || "No reason provided."}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function StatusBadge({ row }: { row: ProductRow }) {
   const ok = row.status === "Success" && row.has_price;
   return (
@@ -347,6 +379,10 @@ export default function HomePage() {
           </div>
         )}
       </section>
+
+      {!loading && result && result.rows.length > 0 && (
+        <TrustVerdictCard data={result} />
+      )}
 
       {result && result.rows.length > 0 && (
         <ResultsTable

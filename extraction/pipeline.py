@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 
+from config import SETTINGS
 from extraction.firecrawl_extract import extract_with_firecrawl
 from extraction.llm_extract import extract_with_llm
 from extraction.playwright_extract import extract_with_playwright
@@ -47,9 +48,20 @@ def _run_core_pipeline(
     capture_product_html: bool,
     skip_http: bool = False,
 ) -> tuple[ProductRow, str | None, str | None]:
-    """Run stages 1→4 in order. Returns (row, product_html, cached_html_for_llm)."""
+    """Run stages 0→4 in order. Returns (row, product_html, cached_html_for_llm)."""
     last_error = "unknown"
     cached_html: str | None = None
+
+    # Stage 0: Firecrawl — tried first, silently (no log output)
+    if SETTINGS.firecrawl_api_key:
+        try:
+            fields = extract_with_firecrawl(product_url)
+            row = ProductRow.from_fields(
+                adapter.display_name, fields, ExtractionMethod.FIRECRAWL, source_url=product_url
+            )
+            return row, None, cached_html
+        except ExtractionFailure:
+            pass
 
     # Stage 1: basic scraping
     if not skip_http:

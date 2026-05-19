@@ -10,6 +10,7 @@ from orchestrator import rescrape_price_gap_outliers, run_all_sites
 
 logger = logging.getLogger(__name__)
 
+SiteStartedFn = Callable[[str], None]
 SiteFinishedFn = Callable[[str, ProductRow], None]
 RecheckBeginFn = Callable[[list[str]], None]
 
@@ -27,6 +28,7 @@ def scrape_query_with_progress(
     *,
     rescrape_price_gaps: bool = True,
     on_first_pass_begin: Callable[[], None] | None = None,
+    on_site_started: SiteStartedFn | None = None,
     on_site_finished: SiteFinishedFn | None = None,
     on_recheck_begin: RecheckBeginFn | None = None,
     on_recheck_site: SiteFinishedFn | None = None,
@@ -40,7 +42,7 @@ def scrape_query_with_progress(
     if on_first_pass_begin:
         on_first_pass_begin()
 
-    rows = run_all_sites(query, on_site_finished=on_site_finished)
+    rows = run_all_sites(query, on_site_started=on_site_started, on_site_finished=on_site_finished)
 
     if rescrape_price_gaps:
         rows = rescrape_price_gap_outliers(

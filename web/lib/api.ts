@@ -8,6 +8,8 @@ export type ProductRow = {
   method: string;
   source_url: string;
   has_price: boolean;
+  trust_label: string;
+  trust_reason: string;
 };
 
 export type SearchResponse = {

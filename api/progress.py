@@ -14,6 +14,10 @@ def friendly_store(website: str) -> str:
     return FRIENDLY_STORE.get(website, website.replace(".com", ""))
 
 
+def message_site_started(website: str) -> str:
+    return f"Checking {friendly_store(website)}…"
+
+
 def message_all_stores_started() -> str:
     return "Checking prices on Amazon, Walmart, Best Buy, and Newegg…"
 

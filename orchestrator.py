@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from decimal import Decimal
 
 from config import SETTINGS
@@ -55,38 +56,60 @@ def _scrape_and_cleanup(
 
 
 SiteFinishedFn = Callable[[str, ProductRow], None]
+SiteStartedFn = Callable[[str], None]
 RecheckBeginFn = Callable[[list[str]], None]
 
 
 def run_all_sites(
     query: str,
     *,
+    on_site_started: SiteStartedFn | None = None,
     on_site_finished: SiteFinishedFn | None = None,
 ) -> list[ProductRow]:
     user_query = query.strip()
     site_plans = resolve_site_search_plans(user_query)
     rows: list[ProductRow] = []
     timeline_job_id = api_job_id.get() if api_job_id is not None else None
+    per_site_timeout = 240.0
     with ThreadPoolExecutor(max_workers=SETTINGS.max_workers) as pool:
-        futures = {
-            pool.submit(
+        futures: dict = {}
+        submit_at: dict = {}
+        for adapter in ALL_ADAPTERS:
+            if on_site_started:
+                on_site_started(adapter.display_name)
+            f = pool.submit(
                 _scrape_and_cleanup,
                 adapter,
                 site_plans[adapter.display_name],
                 timeline_job_id=timeline_job_id,
-            ): adapter
-            for adapter in ALL_ADAPTERS
-        }
-        for future in as_completed(futures):
-            adapter: SiteAdapter = futures[future]
-            try:
-                row = future.result()
-            except Exception as e:
-                logger.exception("[%s] Worker failed: %s", adapter.display_name, e)
+            )
+            futures[f] = adapter
+            submit_at[f] = time.monotonic()
+        remaining = set(futures.keys())
+
+        while remaining:
+            done, remaining = wait(remaining, timeout=1.0, return_when=FIRST_COMPLETED)
+            for future in done:
+                adapter = futures[future]
+                try:
+                    row = future.result()
+                except Exception as e:
+                    logger.exception("[%s] Worker failed: %s", adapter.display_name, e)
+                    row = ProductRow.failed(adapter.display_name)
+                rows.append(row)
+                if on_site_finished:
+                    on_site_finished(adapter.display_name, row)
+
+            timed_out = {f for f in remaining if time.monotonic() - submit_at[f] > per_site_timeout}
+            for future in timed_out:
+                future.cancel()
+                adapter = futures[future]
+                logger.warning("[%s] Site timed out after %.0fs — marking unavailable", adapter.display_name, per_site_timeout)
                 row = ProductRow.failed(adapter.display_name)
-            rows.append(row)
-            if on_site_finished:
-                on_site_finished(adapter.display_name, row)
+                rows.append(row)
+                if on_site_finished:
+                    on_site_finished(adapter.display_name, row)
+                remaining.discard(future)
 
     # Stable column order matching site list
     order = {a.display_name: i for i, a in enumerate(ALL_ADAPTERS)}

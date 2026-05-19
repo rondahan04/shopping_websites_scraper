@@ -50,6 +50,18 @@ def fetch_search_results(
     last_fetched: str | None = None
     results: list[SearchResult] = []
 
+    # Stage 0: Firecrawl — tried first, silently (no log output)
+    if SETTINGS.firecrawl_api_key:
+        try:
+            html = fetch_html_firecrawl(search_url)
+            last_fetched = html
+            results = _parse_serp(adapter, html, search_url)
+            if results:
+                return results, html
+            cached_html = html
+        except ExtractionFailure:
+            pass
+
     # Stage 1: basic scraping (HTTP + BeautifulSoup)
     try:
         html, _ = fetch_html_http(

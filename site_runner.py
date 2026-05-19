@@ -421,9 +421,11 @@ def _pick_valid_match(
     adapter: SiteAdapter,
     *,
     plan: SiteSearchPlan | None = None,
+    max_llm_checks: int = 5,
 ) -> tuple[SearchResult | None, list[str]]:
     """Pick best candidate; collect LLM ``refine_search`` queries when titles mismatch."""
     refine_queries: list[str] = []
+    llm_checks = 0
     for cand in sorted(candidates, key=lambda c: c.score, reverse=True):
         r = cand.result
         if not pdp_url_reachable(r.url):
@@ -453,6 +455,14 @@ def _pick_valid_match(
         if adapter.domain == "amazon.com" and _amazon_heading_matches_ram_kit_url(r.url, r.title):
             continue
         if plan is not None:
+            if llm_checks >= max_llm_checks:
+                logger.info(
+                    "[%s] LLM candidate cap reached (%d) — handing off to Firecrawl PDP fallback",
+                    adapter.display_name,
+                    max_llm_checks,
+                )
+                break
+            llm_checks += 1
             verdict = _verify_listing(adapter, plan, r)
             if verdict.match:
                 return r, refine_queries

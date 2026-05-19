@@ -47,6 +47,8 @@ class ProductRowOut(BaseModel):
     method: str
     source_url: str
     has_price: bool
+    trust_label: str = "Unknown"
+    trust_reason: str = ""
 
 
 class SearchResponse(BaseModel):
@@ -67,6 +69,8 @@ def row_to_api(row: ProductRow) -> ProductRowOut:
         method=row.method,
         source_url=row.source_url,
         has_price=row_has_scraped_price(row),
+        trust_label=row.trust_label,
+        trust_reason=row.trust_reason,
     )
 
 

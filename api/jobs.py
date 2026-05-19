@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 import threading
 import uuid
 from dataclasses import dataclass, field
@@ -13,6 +15,7 @@ from api.progress import (
     message_done,
     message_recheck_start,
     message_recheck_store,
+    message_site_started,
     message_starting,
     message_store_finished,
     message_wrapping_up,
@@ -117,6 +120,23 @@ class JobStore:
         self._update(job_id, result=partial, partial_rows=rows_by_site)
 
     def _run_job(self, job_id: str, query: str, rescrape_price_gaps: bool) -> None:
+        fallback_path = os.environ.get("DEMO_FALLBACK_JSON")
+        if fallback_path:
+            try:
+                with open(fallback_path) as f:
+                    data = json.load(f)
+                response = SearchResponse(**data["result"])
+                self._set_progress(
+                    job_id, percent=100,
+                    message=f"All done! (demo fallback)",
+                    stores_done=[r["website"] for r in data["result"]["rows"]],
+                )
+                self._update(job_id, status="done", result=response)
+                return
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning("DEMO_FALLBACK_JSON load failed, running live: %s", e)
+
         stores_done: list[str] = []
         rows_by_site: dict[str, ProductRow] = {}
         total = STORES_TOTAL
@@ -127,6 +147,14 @@ class JobStore:
                 percent=5,
                 message=message_all_stores_started(),
                 stores_done=[],
+            )
+
+        def on_site_started(website: str) -> None:
+            self._set_progress(
+                job_id,
+                percent=5 + int((len(stores_done) / total) * 70),
+                message=message_site_started(website),
+                stores_done=list(stores_done),
             )
 
         def on_site_finished(website: str, row: ProductRow) -> None:
@@ -175,11 +203,16 @@ class JobStore:
                     query,
                     rescrape_price_gaps=rescrape_price_gaps,
                     on_first_pass_begin=on_first_pass_begin,
+                    on_site_started=on_site_started,
                     on_site_finished=on_site_finished,
                     on_recheck_begin=on_recheck_begin,
                     on_recheck_site=on_recheck_site,
                     on_wrapping_up=on_wrapping_up,
                 )
+            from concurrent.futures import ThreadPoolExecutor as _TPE
+            from extraction.trust_scorer import score_trust_inplace
+            with _TPE(max_workers=len(rows)) as pool:
+                list(pool.map(score_trust_inplace, rows))
             response = build_search_response(query, rows, total_sites=STORES_TOTAL)
             self._set_progress(
                 job_id,

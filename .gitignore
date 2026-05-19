@@ -112,3 +112,4 @@ sessions/
 *.pem
 *.key
 *.secret
+demo_cache.json
