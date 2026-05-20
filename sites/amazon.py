@@ -64,7 +64,7 @@ def _amazon_offscreen_in_financing_context(span: Tag) -> bool:
     if not p or p >= Decimal("150"):
         return False
     cur: Tag | None = span.parent
-    for _ in range(4):
+    for _ in range(7):
         if cur is None:
             break
         blob = cur.get_text(" ", strip=True).lower()
@@ -105,7 +105,7 @@ _AMAZON_LARGE_TV_TITLE_RE = re.compile(
 )
 
 # When DOM buy-box price is far below a visible list/JSON-LD reference, trust the reference.
-_AMAZON_DOM_VS_RETAIL_MIN_RATIO = Decimal("0.4")
+_AMAZON_DOM_VS_RETAIL_MIN_RATIO = Decimal("0.55")
 
 
 def _amazon_json_ld_retail_reference(json_ld, title: str) -> Decimal | None:
@@ -494,6 +494,11 @@ class AmazonAdapter(SiteAdapter):
                 and whole > price * Decimal("1.15")
             ):
                 price = whole
+
+        if price and price < Decimal("30"):
+            rescue = _amazon_rescue_high_price_from_offer_regions(soup)
+            if rescue and rescue > price:
+                price = rescue
 
         if price:
             price = _amazon_apply_dom_below_retail_reference(price, soup, json_ld, title)

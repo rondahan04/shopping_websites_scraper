@@ -18,6 +18,7 @@ def extract_with_http(
             url,
             extra_patterns=patterns,
             settle_after_load=True,
+            warm_homepage=True,
         )
     except ExtractionFailure:
         raise

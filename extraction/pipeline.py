@@ -9,8 +9,10 @@ Stage 2 — Browser-based scraping
 Stage 3 — LLM-based extraction
     Visible page text from prior HTML is sent to an LLM for structured fields.
 
+Stage 3 — LLM-based extraction on cached HTML from Stage 2.
+
 Stage 4 — Firecrawl
-    Firecrawl API fetches or extracts the page when local methods fail.
+    Firecrawl API fetches or extracts the page when stages 1–3 all fail.
 
 Each stage is attempted in order; the first successful extraction wins.
 """
@@ -48,11 +50,10 @@ def _run_core_pipeline(
     capture_product_html: bool,
     skip_http: bool = False,
 ) -> tuple[ProductRow, str | None, str | None]:
-    """Run stages 0→4 in order. Returns (row, product_html, cached_html_for_llm)."""
+    """Run stages 1→4 in order. Returns (row, product_html, cached_html_for_llm)."""
     last_error = "unknown"
     cached_html: str | None = None
 
-    # Stage 0: Firecrawl — tried first, silently (no log output)
     if SETTINGS.firecrawl_api_key:
         try:
             fields = extract_with_firecrawl(product_url)

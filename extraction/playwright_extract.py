@@ -23,7 +23,10 @@ def _get_browser_context() -> tuple[Any, Any, Any]:
 
         try:
             pw = sync_playwright().start()
-            browser = pw.chromium.launch(headless=True)
+            browser = pw.chromium.launch(
+                headless=True,
+                args=["--disable-blink-features=AutomationControlled"],
+            )
         except Exception as e:
             msg = (
                 "playwright launch failed — run `cd shopping_websites_scraper && "
@@ -78,6 +81,7 @@ def fetch_html_playwright(
         viewport={"width": 1366, "height": 768},
     )
     page = context.new_page()
+    page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     try:
         response = page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
         if response and response.status in (403, 429):

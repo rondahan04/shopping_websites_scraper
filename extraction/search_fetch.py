@@ -50,7 +50,6 @@ def fetch_search_results(
     last_fetched: str | None = None
     results: list[SearchResult] = []
 
-    # Stage 0: Firecrawl — tried first, silently (no log output)
     if SETTINGS.firecrawl_api_key:
         try:
             html = fetch_html_firecrawl(search_url)
@@ -69,6 +68,7 @@ def fetch_search_results(
             timeout=SETTINGS.search_timeout_s,
             extra_patterns=patterns,
             settle_after_load=True,
+            warm_homepage=True,
         )
         last_fetched = html
         results = _parse_serp(adapter, html, search_url)
