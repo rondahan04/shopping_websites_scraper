@@ -13,6 +13,52 @@ import {
 } from "@/lib/api";
 import { formatScrapeMethod, productLink } from "@/lib/methodLabels";
 
+const TRUST_BADGE_CLASS: Record<string, string> = {
+  High: "trust-badge trust-badge-high",
+  Medium: "trust-badge trust-badge-medium",
+  Low: "trust-badge trust-badge-low",
+  Unknown: "trust-badge trust-badge-unknown",
+};
+
+const TRUST_BADGE_LABEL: Record<string, string> = {
+  High: "✓ High trust",
+  Medium: "~ Medium",
+  Low: "⚠ Low trust",
+  Unknown: "? No data",
+};
+
+function TrustPanel({ data }: { data: SearchResponse }) {
+  const rows = data.rows.filter((r) => r.trust_label);
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="trust-verdict">
+      <div className="trust-verdict-header">// AI Review Trust Analysis</div>
+      <div className="trust-verdict-grid">
+        {rows.map((row) => {
+          const label = row.trust_label || "Unknown";
+          const badgeClass = TRUST_BADGE_CLASS[label] ?? TRUST_BADGE_CLASS.Unknown;
+          const badgeLabel = TRUST_BADGE_LABEL[label] ?? label;
+          return (
+            <div key={row.website} className="trust-card">
+              <div className="trust-card-site">{row.website}</div>
+              <span className={badgeClass}>{badgeLabel}</span>
+              {row.average_rating !== "N/A" && (
+                <div className="trust-card-site" style={{ marginTop: "0.3rem" }}>
+                  {row.average_rating}★ · {row.review_count} reviews
+                </div>
+              )}
+              {row.trust_reason && (
+                <div className="trust-card-reason">{row.trust_reason}</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 const TRUST_PILL_CLASS: Record<string, string> = {
   High: "trust-pill trust-pill-high",
   Medium: "trust-pill trust-pill-medium",
@@ -129,6 +175,8 @@ function ResultsCards({
           </p>
         )}
       </div>
+
+      <TrustPanel data={data} />
 
       <div className="sort-controls">
         <span className="sort-label">// sort by:</span>
