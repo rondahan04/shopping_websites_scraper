@@ -1,0 +1,62 @@
+{
+  "query": "Logitech MX Master 3S",
+  "result": {
+    "query": "Logitech MX Master 3S",
+    "rows": [
+      {
+        "website": "Amazon.com",
+        "product_title": "Logitech MX Master 3S - Performance Wireless Mouse with Ultra-Fast Scrolling, Ergo, 8K DPI, Track on Glass, Quiet Clicks, Bluetooth, Windows, Linux, Chrome, Black",
+        "price": "$79.99",
+        "average_rating": "4.7",
+        "review_count": "134",
+        "status": "Success",
+        "method": "firecrawl",
+        "source_url": "https://www.amazon.com/Logitech-Master-Performance-Ultra-Fast-Scrolling/dp/B0G2SG3NFT/ref=sr_1_2",
+        "has_price": true,
+        "trust_label": "Medium",
+        "trust_reason": "Rating pattern looks normal."
+      },
+      {
+        "website": "BestBuy.com",
+        "product_title": "N/A",
+        "price": "N/A",
+        "average_rating": "N/A",
+        "review_count": "N/A",
+        "status": "Failed",
+        "method": "N/A",
+        "source_url": "N/A",
+        "has_price": false,
+        "trust_label": "Unknown",
+        "trust_reason": ""
+      },
+      {
+        "website": "Walmart.com",
+        "product_title": "Logitech MX Master 3S, Wireless Performance Mouse, Ergo, 8K DPI, Quiet Clicks, USB-C, Black",
+        "price": "$79.99",
+        "average_rating": "4.4",
+        "review_count": "391",
+        "status": "Success",
+        "method": "firecrawl",
+        "source_url": "https://www.walmart.com/ip/Logitech-MX-Master-3S-Wireless-Performance-Mouse-Ergo-8K-DPI-Quiet-Clicks-USB-C-Black/731473988",
+        "has_price": true,
+        "trust_label": "Medium",
+        "trust_reason": "Rating pattern looks normal."
+      },
+      {
+        "website": "Newegg.com",
+        "product_title": "Logitech MX Master 3S Black 7 Buttons 2 x Wheels Bluetooth Bluetooth Wireless Darkfield high precision Gaming Mouse",
+        "price": "$89.99",
+        "average_rating": "4.7",
+        "review_count": "74",
+        "status": "Success",
+        "method": "firecrawl",
+        "source_url": "https://www.newegg.com/p/N82E16826197663",
+        "has_price": true,
+        "trust_label": "Medium",
+        "trust_reason": "Rating pattern looks normal."
+      }
+    ],
+    "success_count": 3,
+    "total_sites": 4
+  }
+}

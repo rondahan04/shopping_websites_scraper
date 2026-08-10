@@ -360,6 +360,24 @@ export default function HomePage() {
         </div>
       </header>
 
+      {/* Demo builds must say so before anyone reads a price as live. */}
+      {process.env.NEXT_PUBLIC_DEMO === "1" ? (
+        <aside className="demo-banner">
+          <strong>Recorded demo.</strong> This is one real run captured from the
+          pipeline on 10 Aug 2026 — the prices, methods and trust scores below
+          are what it actually returned. It replays on any search rather than
+          scraping live: the backend needs a headless browser, 30–90s jobs and
+          API keys, none of which belong on a public endpoint.{" "}
+          <a
+            href="https://github.com/rondahan04/shopping_websites_scraper"
+            target="_blank"
+            rel="noreferrer noopener"
+          >
+            Source on GitHub →
+          </a>
+        </aside>
+      ) : null}
+
       <section className="card">
         <form className="search-form" onSubmit={onSubmit}>
           <label htmlFor="product-query">

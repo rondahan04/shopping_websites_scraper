@@ -949,3 +949,28 @@ footer {
     padding-left: 0.85rem;
   }
 }
+
+/* Demo-build banner. Deliberately loud: a visitor must not read a recorded
+   price as a live one. */
+.demo-banner {
+  max-width: 1100px;
+  margin: 0 auto 1rem;
+  padding: 0.85rem 1.1rem;
+  border: 1px solid rgba(255, 176, 76, 0.45);
+  border-left: 3px solid rgba(255, 176, 76, 0.9);
+  border-radius: 10px;
+  background: rgba(255, 176, 76, 0.08);
+  color: #f0d9b0;
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.demo-banner strong {
+  color: #ffc46b;
+}
+
+.demo-banner a {
+  color: #7fe0c4;
+  text-decoration: underline;
+  white-space: nowrap;
+}

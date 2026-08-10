@@ -99,6 +99,11 @@ docs/
 scripts/
 package.json
 package-lock.json
+# ...but the web frontend needs its manifest to build anywhere but this
+# machine. Without these two negations `web/` cannot be installed or
+# deployed from a clean clone.
+!web/package.json
+!web/package-lock.json
 
 # Scraper runtime output
 output/
