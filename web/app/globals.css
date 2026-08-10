@@ -1,10 +1,10 @@
-@font-face {
-  font-family: "Diastema";
-  src: url("/fonts/Diastema-Regular.woff2") format("woff2");
-  font-weight: 400 700;
-  font-style: normal;
-  font-display: swap;
-}
+/* Diastema was the intended display face, but it is a commercial typeface
+   (Issam Type) and was never shipped in this repo - the @font-face pointed at
+   a file that has never existed, so every page load 404'd and the browser fell
+   through to Fraunces anyway. Fraunces is what visitors have always actually
+   seen; it is now what the CSS asks for. Re-adding Diastema needs a purchased
+   webfont licence, and even then the file cannot be committed to a public
+   repo - host it separately and add the @font-face back locally. */
 
 :root {
   --bg-deep: #020c10;
@@ -24,8 +24,8 @@
   --shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
   --glow-mint: 0 0 20px rgba(126, 224, 208, 0.4), 0 0 60px rgba(126, 224, 208, 0.15);
   --glow-accent: 0 0 20px rgba(255, 107, 74, 0.5), 0 0 50px rgba(255, 107, 74, 0.2);
-  --font-display: "Diastema", "Fraunces", "Georgia", serif;
-  --font-body: "Diastema", "Fraunces", "Georgia", serif;
+  --font-display: "Fraunces", "Georgia", serif;
+  --font-body: "Fraunces", "Georgia", serif;
   --font-mono: "Fira Code", "JetBrains Mono", ui-monospace, monospace;
 }
 
