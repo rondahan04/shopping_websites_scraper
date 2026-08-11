@@ -27,13 +27,50 @@ const TRUST_BADGE_LABEL: Record<string, string> = {
   Unknown: "? No data",
 };
 
+/**
+ * Says which checks did not run. Every LLM call in the pipeline fails open, so
+ * a run with an unreachable or unfunded API produces rows that look identical
+ * to verified ones. Without this the page would quietly claim guarantees the
+ * backend never delivered.
+ */
+function UnverifiedNotice({ data }: { data: SearchResponse }) {
+  const skipped = data.checks_skipped ?? [];
+  if (skipped.length === 0) return null;
+
+  return (
+    <div className="unverified-notice" role="status">
+      <strong>Some checks did not run.</strong> The results below are
+      unverified — not verified and passed.
+      <ul>
+        {skipped.map((check) => (
+          <li key={check.component}>
+            <span className="unverified-component">{check.component}</span>:{" "}
+            {check.consequence}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function TrustPanel({ data }: { data: SearchResponse }) {
   const rows = data.rows.filter((r) => r.trust_label);
   if (rows.length === 0) return null;
 
+  // When the model never scored these, the labels come from a two-rule
+  // heuristic over rating and review count. Calling that "AI Review Trust
+  // Analysis" is the overclaim this header exists to avoid.
+  const trustScored = !(data.checks_skipped ?? []).some(
+    (check) => check.component === "trust scoring",
+  );
+
   return (
     <div className="trust-verdict">
-      <div className="trust-verdict-header">// AI Review Trust Analysis</div>
+      <div className="trust-verdict-header">
+        {trustScored
+          ? "// AI Review Trust Analysis"
+          : "// Review Trust — heuristic only, AI scoring unavailable"}
+      </div>
       <div className="trust-verdict-grid">
         {rows.map((row) => {
           const label = row.trust_label || "Unknown";
@@ -175,6 +212,8 @@ function ResultsCards({
           </p>
         )}
       </div>
+
+      <UnverifiedNotice data={data} />
 
       <TrustPanel data={data} />
 

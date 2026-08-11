@@ -7,6 +7,7 @@ import json
 from bs4 import BeautifulSoup
 
 from config import SETTINGS
+from extraction import llm_health
 from models import ExtractionFailure, ExtractionMethod, ProductFields, SearchResult
 from sites.base import SiteAdapter
 from utils.parsing import parse_price, parse_rating, parse_review_count, visible_text
@@ -32,6 +33,7 @@ Store-specific product URL rules (invalid URLs will be discarded):
 
 def extract_with_llm(html: str, url: str) -> ProductFields:
     if not SETTINGS.openai_api_key:
+        llm_health.record_unavailable(llm_health.LISTING_EXTRACT, "OPENAI_API_KEY not set")
         raise ExtractionFailure("OPENAI_API_KEY not set", ExtractionMethod.LLM)
 
     soup = BeautifulSoup(html, "lxml")
@@ -55,6 +57,7 @@ def extract_with_llm(html: str, url: str) -> ProductFields:
         raw = response.choices[0].message.content or "{}"
         data = json.loads(raw)
     except Exception as e:
+        llm_health.record_unavailable(llm_health.LISTING_EXTRACT, str(e))
         raise ExtractionFailure(f"llm extraction failed: {e}", ExtractionMethod.LLM) from e
 
     title = str(data.get("title") or "").strip()
@@ -91,6 +94,7 @@ def extract_with_llm(html: str, url: str) -> ProductFields:
 
 def parse_serp_with_llm(html: str, search_url: str, adapter: SiteAdapter) -> list[SearchResult]:
     if not SETTINGS.openai_api_key:
+        llm_health.record_unavailable(llm_health.LISTING_EXTRACT, "OPENAI_API_KEY not set")
         raise ExtractionFailure("OPENAI_API_KEY not set", ExtractionMethod.LLM)
 
     soup = BeautifulSoup(html, "lxml")
@@ -114,6 +118,7 @@ def parse_serp_with_llm(html: str, search_url: str, adapter: SiteAdapter) -> lis
         raw = response.choices[0].message.content or "{}"
         data = json.loads(raw)
     except Exception as e:
+        llm_health.record_unavailable(llm_health.LISTING_EXTRACT, str(e))
         raise ExtractionFailure(f"llm serp parse failed: {e}", ExtractionMethod.LLM) from e
 
     results: list[SearchResult] = []

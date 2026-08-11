@@ -12,11 +12,22 @@ export type ProductRow = {
   trust_reason: string;
 };
 
+/** An LLM-backed check that did not run for this result. */
+export type SkippedCheck = {
+  component: string;
+  consequence: string;
+  cause: string;
+};
+
 export type SearchResponse = {
   query: string;
   rows: ProductRow[];
   success_count: number;
   total_sites: number;
+  // Optional: older backends and the recorded demo fixture omit it. Every LLM
+  // check in the pipeline fails open, so without this the UI would present a
+  // run with no verification exactly like a fully verified one.
+  checks_skipped?: SkippedCheck[];
 };
 
 export type JobProgress = {

@@ -13,6 +13,7 @@ _ROOT = Path(__file__).resolve().parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from extraction import llm_health  # noqa: E402
 from extraction.playwright_extract import shutdown_browser  # noqa: E402
 from models import row_has_scraped_price  # noqa: E402
 from orchestrator import rescrape_price_gap_outliers, run_all_sites  # noqa: E402
@@ -63,9 +64,15 @@ def main() -> int:
     try:
         if args.save_html:
             set_html_debug_dir(args.save_html)
+        llm_health.reset()
         rows = run_all_sites(query)
         rows = rescrape_price_gap_outliers(rows, query, enabled=not args.no_price_gap_rescrape)
         print_results_table(rows)
+        # Printed under the table, not logged: a run whose verification passes
+        # never fired still produces a table that looks fully checked, and
+        # -q suppresses the warnings that would have said otherwise.
+        for line in llm_health.report_lines():
+            print(line, file=sys.stderr)
         success = sum(1 for r in rows if row_has_scraped_price(r))
         return 0 if success >= 3 else 2
     finally:

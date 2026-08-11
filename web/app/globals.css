@@ -974,3 +974,37 @@ footer {
   text-decoration: underline;
   white-space: nowrap;
 }
+
+/* Shown when an LLM-backed check did not run. Reads as a warning rather than
+   an error: the results are still real scrapes, they just carry fewer
+   guarantees than the page would otherwise imply. */
+.unverified-notice {
+  margin: 0 0 1.1rem;
+  padding: 0.85rem 1.1rem;
+  border: 1px solid rgba(255, 176, 76, 0.45);
+  border-left: 3px solid rgba(255, 176, 76, 0.9);
+  border-radius: 10px;
+  background: rgba(255, 176, 76, 0.08);
+  color: #f0d9b0;
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.unverified-notice strong {
+  color: #ffc46b;
+}
+
+.unverified-notice ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.unverified-notice li {
+  margin-top: 0.2rem;
+}
+
+.unverified-component {
+  color: #ffc46b;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.82rem;
+}

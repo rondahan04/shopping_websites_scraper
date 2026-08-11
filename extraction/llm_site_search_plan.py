@@ -7,6 +7,7 @@ import logging
 from dataclasses import dataclass
 
 from config import SETTINGS
+from extraction import llm_health
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,7 @@ def llm_site_search_plans(user_query: str) -> dict[str, SiteSearchPlan] | None:
         return None
     if not SETTINGS.openai_api_key:
         logger.warning("LLM site search plan skipped: OPENAI_API_KEY not set")
+        llm_health.record_unavailable(llm_health.SEARCH_PLAN, "OPENAI_API_KEY not set")
         return None
 
     user_prompt = (
@@ -117,6 +119,7 @@ def llm_site_search_plans(user_query: str) -> dict[str, SiteSearchPlan] | None:
         data = json.loads(raw)
     except Exception as e:
         logger.warning("LLM site search plan failed: %s", e)
+        llm_health.record_unavailable(llm_health.SEARCH_PLAN, str(e))
         return None
 
     if not isinstance(data, dict):

@@ -17,10 +17,15 @@ extractor.
 ![Next.js](https://img.shields.io/badge/Next.js-App%20Router-000000?logo=nextdotjs&logoColor=white)
 ![OpenAI](https://img.shields.io/badge/OpenAI-SDK%202.x-412991?logo=openai&logoColor=white)
 
-> **Heads up before you clone:** several files needed to run this are excluded
-> by `.gitignore` — including both `package.json` files and `.env.example`. See
-> [Known gaps](#known-gaps) first; the web UI cannot be installed from a fresh
-> clone as-is.
+> **Heads up before you clone:** the root `package.json` and `.env.example` are
+> still excluded by `.gitignore`, so the `npm run …` shortcuts and
+> `cp .env.example .env` do not work from a clone. `web/` installs fine — its
+> manifest is committed. See [Known gaps](#known-gaps).
+>
+> **Every LLM check fails open.** With no key, no credits, or an unreachable
+> API, the pipeline still returns results — it just stops verifying them. See
+> [When the LLM is unavailable](#when-the-llm-is-unavailable) for what the run
+> tells you when that happens.
 
 ---
 
@@ -229,10 +234,6 @@ A Next.js front end in `web/` — matrix-green terminal aesthetic, live progress
 bar, sortable results table, and a playable mini-game to pass the time while a
 scrape runs (`WaitGame.tsx`).
 
-**`web/package.json` is not in the repository** ([Known gaps](#known-gaps)), so
-the UI cannot be installed from a fresh clone without recreating it. Once it
-exists:
-
 ```bash
 cd web && npm install && npm run dev     # http://localhost:3000
 ```
@@ -274,9 +275,10 @@ and prices that fail verification.
 | `ModuleNotFoundError: curl_cffi`                  | Not in `requirements.txt`. `pip install curl_cffi`.                                                                                       |
 | `npm run api` / `npm run web` not found           | Those scripts live in a root `package.json` that is gitignored. Use `uvicorn api.main:app --port 8000`.                                   |
 | `cp .env.example .env` fails                      | `.env.example` is gitignored. Create `.env` by hand — see [Setup](#setup).                                                                |
-| `cd web && npm install` fails                     | `web/package.json` is gitignored.                                                                                                         |
+| `429 insufficient_quota` in the logs              | OpenAI account is out of credits. The run continues with every check failing open — read the `WARNING: some checks did not run` summary under the table. |
+| Results look verified but nothing was checked     | They probably weren't. See [When the LLM is unavailable](#when-the-llm-is-unavailable); logs say `UNAVAILABLE — accepting … unchecked`.    |
 | Every site returns Failed                         | Missing `OPENAI_API_KEY` — the search-plan step runs before any fetch.                                                                    |
-| One site consistently fails                       | Bot wall. Run with `--save-html ./html_debug` and check the dump for a CAPTCHA or challenge page (`GENERIC_BOT_PATTERNS` in `config.py`). |
+| One site consistently fails                       | Not always a bot wall — check the stage errors first. `ERR_HTTP2_PROTOCOL_ERROR` is a transport failure and a Firecrawl `500` is upstream, neither of which is a block. For a real wall, `--save-html ./html_debug` and look for a CAPTCHA or challenge page (`GENERIC_BOT_PATTERNS` in `config.py`). |
 | Prices look like list price, not buy-box          | The price verifier should catch it. Confirm `LLM_PRICE_VERIFY` is on and the model has a valid key.                                       |
 | Correct product, wrong variant (size/colour/year) | Tune the hard filters in `matching/normalize.py`; scoring alone will not separate near-identical titles.                                  |
 | Runs take 5+ minutes                              | Expected. Settle delays are 3–8 s per navigation by design; lower `PAGE_SETTLE_MIN_S`/`MAX_S` to speed up at higher block risk.           |
@@ -284,15 +286,56 @@ and prices that fail verification.
 
 ---
 
+## When the LLM is unavailable
+
+Six things in this pipeline are model judgements: the per-retailer search plan,
+the LLM extraction fallback, the SERP title verify, the scraped-price verify,
+the price benchmark behind the outlier rescrape, and the review-trust score.
+
+**All six fail open.** If the API key is missing, out of credits, or the call
+errors, the scrape continues and whatever was being judged is accepted. That is
+the intended default — a scrape with no verification beats no scrape — but it
+means a degraded run produces rows that look exactly like verified ones.
+
+Two guards keep that from being invisible:
+
+**`verified` on the verify results.** `TitleVerifyResult` and
+`PriceVerifyResult` carry `verified` alongside `match` / `plausible`. A caller
+can therefore tell "the model said this is the right product" from "nobody
+looked" — both of which arrive as a pass. Logs say `UNAVAILABLE — accepting …
+unchecked` rather than `OK`.
+
+**`extraction/llm_health.py`.** Components register when they degrade. The CLI
+prints the summary to stderr under the results table:
+
+```
+WARNING: some checks did not run — results below are unverified, not verified-and-passed.
+  - title verify: listings accepted without checking they are the same product
+      cause: Error code: 429 - ... You have no credits remaining ...
+  - trust scoring: review-trust labels come from the heuristic, not the model
+      cause: Error code: 429 - ...
+```
+
+The API returns the same information as `checks_skipped` on the search
+response, and the web UI renders it above the results. When trust scoring
+degrades, its labels come from a two-rule heuristic over rating and review
+count — the panel says so instead of calling itself AI analysis.
+
+Note the API's report is **process-wide, not per-job**: jobs run in concurrent
+threads over shared state, and the realistic cause applies to every job in the
+process anyway. A one-off failure keeps being reported until restart. That errs
+toward disclosure, which is the direction a safety signal should err in.
+
+---
+
 ## Known gaps
 
-- **The repo is not runnable as documented.** `.gitignore` excludes, under a
-  "Local-only (solo dev — not published)" heading, both `package.json` files,
-  `tests/`, `docs/`, and `scripts/`; `.env.example` is caught by the `.env.*`
-  secrets rule. So `npm run api`, `npm run web`, `npm run web:install`, and
-  `cp .env.example .env` — all previously in this README — cannot work from a
-  clone, and `web/` ships source with no manifest to install it. Either commit
-  the manifests and an example env file, or treat `web/` as reference source.
+- **The root `package.json` and `.env.example` are still unpublished.**
+  `.gitignore` excludes them under a "Local-only (solo dev — not published)"
+  heading, along with `tests/`, `docs/`, and `scripts/`, so `npm run api`,
+  `npm run web` and `cp .env.example .env` cannot work from a clone. `web/`
+  is fixed — `web/package.json` and its lockfile are committed, so the UI now
+  installs from a fresh clone.
 - **`curl_cffi` is missing from `requirements.txt`** even though
   `utils/http_fetch.py` imports it at module load, so stage 1 dies on a fresh
   install.

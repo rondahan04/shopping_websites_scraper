@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from config import SETTINGS
+from extraction import llm_health
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,11 @@ class TitleVerifyResult:
     reason: str
     action: TitleVerifyAction
     suggested_search: str | None = None
+    # Did a judgement actually happen? False means the check was skipped or
+    # failed and ``match`` is a fail-open default, not a verdict. Without this
+    # the caller cannot tell "the model said these are the same product" from
+    # "nobody looked" — both arrive as match=True.
+    verified: bool = True
 
 
 def _parse_action(raw: object, *, match: bool) -> TitleVerifyAction:
@@ -70,13 +76,18 @@ def llm_verify_listing_title(
 ) -> TitleVerifyResult:
     """Compare scraped SERP title to expected product name; suggest next step when they differ."""
     if not SETTINGS.llm_title_verify_enabled:
-        return TitleVerifyResult(True, "title verify disabled", "accept")
+        # Switched off deliberately, but the rows are still unverified — the
+        # output should not imply a check that an operator turned off.
+        llm_health.record_unavailable(llm_health.TITLE_VERIFY, "disabled by configuration")
+        return TitleVerifyResult(True, "title verify disabled", "accept", verified=False)
     if not SETTINGS.openai_api_key:
-        return TitleVerifyResult(True, "no api key", "accept")
+        llm_health.record_unavailable(llm_health.TITLE_VERIFY, "OPENAI_API_KEY not set")
+        return TitleVerifyResult(True, "no api key", "accept", verified=False)
     expected = expected_product_name.strip()
     scraped = scraped_listing_title.strip()
     if not expected or not scraped:
-        return TitleVerifyResult(True, "empty title", "accept")
+        return TitleVerifyResult(True, "empty title", "accept", verified=False)
+    # An exact string match is a real determination, so this one stays verified.
     if expected.lower() == scraped.lower():
         return TitleVerifyResult(True, "exact title match", "accept")
 
@@ -103,8 +114,9 @@ def llm_verify_listing_title(
         raw = response.choices[0].message.content or "{}"
         data = json.loads(raw)
     except Exception as e:
-        logger.warning("LLM title verify failed (allowing listing): %s", e)
-        return TitleVerifyResult(True, f"verify error: {e}", "accept")
+        logger.warning("LLM title verify failed (allowing listing unchecked): %s", e)
+        llm_health.record_unavailable(llm_health.TITLE_VERIFY, str(e))
+        return TitleVerifyResult(True, f"verify error: {e}", "accept", verified=False)
 
     match = data.get("match")
     if isinstance(match, str):

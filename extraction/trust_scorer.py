@@ -6,6 +6,7 @@ import json
 import logging
 
 from config import SETTINGS
+from extraction import llm_health
 from models import ProductRow
 
 logger = logging.getLogger(__name__)
@@ -62,12 +63,27 @@ def _heuristic(avg_rating: str, review_count: str) -> tuple[str, str]:
     return "Medium", "Rating pattern looks normal."
 
 
+def _apply_heuristic(row: ProductRow, *, cause: str | None) -> None:
+    """Fall back to the two-rule heuristic and label the result as such.
+
+    The heuristic reads one rating and one count; the model reads the listing.
+    Presenting the first as if it were the second is the whole problem — a
+    "Medium / Rating pattern looks normal" produced because the API was down
+    is indistinguishable in the UI from one the model actually reasoned about.
+    """
+    label, reason = _heuristic(row.average_rating, row.review_count)
+    if cause is not None:
+        llm_health.record_unavailable(llm_health.TRUST_SCORING, cause)
+        if label != "Unknown":
+            reason = f"{reason} (heuristic only — AI review scoring unavailable)".strip()
+    row.trust_label = label
+    row.trust_reason = reason
+
+
 def score_trust_inplace(row: ProductRow) -> None:
     """Score review trust for one row and mutate trust_label / trust_reason in place."""
     if not SETTINGS.openai_api_key:
-        label, reason = _heuristic(row.average_rating, row.review_count)
-        row.trust_label = label
-        row.trust_reason = reason
+        _apply_heuristic(row, cause="OPENAI_API_KEY not set")
         return
 
     rating = _parse_rating(row.average_rating)
@@ -103,16 +119,13 @@ def score_trust_inplace(row: ProductRow) -> None:
         data = json.loads(raw)
     except Exception as e:
         logger.warning("[%s] Trust scorer LLM call failed — using heuristic: %s", row.website, e)
-        label, reason = _heuristic(row.average_rating, row.review_count)
-        row.trust_label = label
-        row.trust_reason = reason
+        _apply_heuristic(row, cause=str(e))
         return
 
     label = str(data.get("trust_label") or "").strip()
     if label not in ("Low", "Medium", "High"):
-        label, reason = _heuristic(row.average_rating, row.review_count)
-        row.trust_label = label
-        row.trust_reason = reason
+        # The call succeeded but the answer was unusable — still not a verdict.
+        _apply_heuristic(row, cause=f"model returned an unusable label: {label!r}")
         return
 
     row.trust_label = label

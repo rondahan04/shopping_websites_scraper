@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from config import SETTINGS
+from extraction import llm_health
 from utils.parsing import parse_price
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,10 @@ class PriceVerifyResult:
     plausible: bool
     reason: str
     expected_price_usd: Decimal | None = None
+    # False means ``plausible`` is a fail-open default rather than a verdict —
+    # the check was disabled, unconfigured, or the call failed. See the same
+    # field on TitleVerifyResult.
+    verified: bool = True
 
 
 def _coerce_expected(value: object) -> Decimal | None:
@@ -62,15 +67,19 @@ def llm_verify_scraped_price(
 ) -> PriceVerifyResult:
     """Ask the LLM whether ``scraped_price`` is a plausible US buy-box price for this PDP."""
     if not SETTINGS.llm_price_verify_enabled:
-        return PriceVerifyResult(True, "price verify disabled")
+        # Same reasoning as the title verifier: off by choice is still off.
+        llm_health.record_unavailable(llm_health.PRICE_VERIFY, "disabled by configuration")
+        return PriceVerifyResult(True, "price verify disabled", verified=False)
     if not SETTINGS.openai_api_key:
-        return PriceVerifyResult(True, "no api key")
+        llm_health.record_unavailable(llm_health.PRICE_VERIFY, "OPENAI_API_KEY not set")
+        return PriceVerifyResult(True, "no api key", verified=False)
+    # A non-positive price is a real determination, not a fail-open default.
     if scraped_price <= 0:
         return PriceVerifyResult(False, "non-positive scraped price")
 
     title = product_title.strip()
     if not title:
-        return PriceVerifyResult(True, "empty title")
+        return PriceVerifyResult(True, "empty title", verified=False)
 
     user_prompt = (
         f"Retailer: {retailer}\n"
@@ -99,8 +108,9 @@ def llm_verify_scraped_price(
         raw = response.choices[0].message.content or "{}"
         data = json.loads(raw)
     except Exception as e:
-        logger.warning("LLM price verify failed (allowing price): %s", e)
-        return PriceVerifyResult(True, f"verify error: {e}")
+        logger.warning("LLM price verify failed (allowing price unchecked): %s", e)
+        llm_health.record_unavailable(llm_health.PRICE_VERIFY, str(e))
+        return PriceVerifyResult(True, f"verify error: {e}", verified=False)
 
     plausible = data.get("plausible")
     if isinstance(plausible, str):

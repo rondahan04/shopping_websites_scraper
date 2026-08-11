@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from extraction import llm_health
 from models import ProductRow, row_has_scraped_price
 
 
@@ -51,11 +52,28 @@ class ProductRowOut(BaseModel):
     trust_reason: str = ""
 
 
+class SkippedCheck(BaseModel):
+    """An LLM-backed check that did not run for this result."""
+
+    component: str
+    consequence: str
+    cause: str
+
+
 class SearchResponse(BaseModel):
     query: str
     rows: list[ProductRowOut]
     success_count: int
     total_sites: int
+    # Every LLM check fails open, so rows can look verified when nothing
+    # verified them. This is what lets the UI say which guarantees are missing
+    # instead of presenting a degraded run as a clean one.
+    #
+    # Process-wide, not per-job: jobs run in concurrent threads over shared
+    # module state, and the realistic cause (no key, no credits) applies to
+    # every job in the process anyway. A one-off failure therefore keeps
+    # reporting until restart — deliberately erring toward disclosure.
+    checks_skipped: list[SkippedCheck] = Field(default_factory=list)
 
 
 def row_to_api(row: ProductRow) -> ProductRowOut:
@@ -87,4 +105,12 @@ def build_search_response(
         rows=api_rows,
         success_count=success,
         total_sites=total_sites if total_sites is not None else len(rows),
+        checks_skipped=[
+            SkippedCheck(
+                component=component,
+                consequence=llm_health.consequence(component),
+                cause=cause,
+            )
+            for component, cause in llm_health.degradations().items()
+        ],
     )

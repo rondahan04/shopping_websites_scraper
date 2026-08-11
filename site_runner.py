@@ -109,6 +109,15 @@ def _row_passes_price_verify(
         retailer=adapter.display_name,
         source_url=row.source_url,
     )
+    if not verify.verified:
+        # Fail open, but say so. "OK" here would claim the price was checked.
+        logger.warning(
+            "[%s] LLM price verify UNAVAILABLE — accepting $%s unchecked: %s",
+            adapter.display_name,
+            f"{found:,.2f}",
+            verify.reason,
+        )
+        return True
     if verify.plausible:
         expected = (
             f", expected ~${verify.expected_price_usd:,.2f}"
@@ -388,7 +397,17 @@ def _verify_listing(
         scraped_listing_title=listing.title,
         retailer=adapter.display_name,
     )
-    if verdict.match:
+    if not verdict.verified:
+        # Never report a skipped or failed check as a pass. This line used to
+        # read "LLM title verify OK: verify error: ...", which claimed the
+        # opposite of what happened.
+        logger.warning(
+            "[%s] LLM title verify UNAVAILABLE — accepting listing unchecked (%s): scraped=%r",
+            adapter.display_name,
+            verdict.reason[:120],
+            listing.title[:80],
+        )
+    elif verdict.match:
         logger.info(
             "[%s] LLM title verify OK: %s",
             adapter.display_name,

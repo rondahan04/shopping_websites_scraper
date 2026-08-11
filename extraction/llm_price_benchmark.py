@@ -7,6 +7,7 @@ import logging
 from decimal import Decimal
 
 from config import SETTINGS
+from extraction import llm_health
 from utils.parsing import parse_price
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,7 @@ def llm_reference_prices_for_query(query: str) -> dict[str, Decimal | None] | No
     """
     if not SETTINGS.openai_api_key:
         logger.warning("price-gap LLM benchmark skipped: OPENAI_API_KEY not set")
+        llm_health.record_unavailable(llm_health.PRICE_BENCHMARK, "OPENAI_API_KEY not set")
         return None
 
     user_prompt = f"What the price in Amazon, Bestbuy, Walmart, Newegg for {query}"
@@ -92,6 +94,7 @@ def llm_reference_prices_for_query(query: str) -> dict[str, Decimal | None] | No
         data = json.loads(raw)
     except Exception as e:
         logger.warning("price-gap LLM benchmark failed: %s", e)
+        llm_health.record_unavailable(llm_health.PRICE_BENCHMARK, str(e))
         return None
 
     prices = _map_blob_to_sites(_extract_price_blob(data))
