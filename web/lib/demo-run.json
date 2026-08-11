@@ -14,7 +14,7 @@
         "source_url": "https://www.amazon.com/Logitech-Master-Performance-Ultra-Fast-Scrolling/dp/B0G2SG3NFT/ref=sr_1_2",
         "has_price": true,
         "trust_label": "Medium",
-        "trust_reason": "Rating pattern looks normal."
+        "trust_reason": "Rating pattern looks normal. (heuristic only \u2014 AI review scoring unavailable)"
       },
       {
         "website": "BestBuy.com",
@@ -40,7 +40,7 @@
         "source_url": "https://www.walmart.com/ip/Logitech-MX-Master-3S-Wireless-Performance-Mouse-Ergo-8K-DPI-Quiet-Clicks-USB-C-Black/731473988",
         "has_price": true,
         "trust_label": "Medium",
-        "trust_reason": "Rating pattern looks normal."
+        "trust_reason": "Rating pattern looks normal. (heuristic only \u2014 AI review scoring unavailable)"
       },
       {
         "website": "Newegg.com",
@@ -53,10 +53,42 @@
         "source_url": "https://www.newegg.com/p/N82E16826197663",
         "has_price": true,
         "trust_label": "Medium",
-        "trust_reason": "Rating pattern looks normal."
+        "trust_reason": "Rating pattern looks normal. (heuristic only \u2014 AI review scoring unavailable)"
       }
     ],
     "success_count": 3,
-    "total_sites": 4
+    "total_sites": 4,
+    "checks_skipped": [
+      {
+        "component": "search plan",
+        "consequence": "per-retailer search terms fell back to the raw query",
+        "cause": "Error code: 429 - {'error': {'message': 'You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organizat\u2026"
+      },
+      {
+        "component": "listing extract",
+        "consequence": "listings parsed by selectors only, with no LLM fallback",
+        "cause": "Error code: 429 - {'error': {'message': 'You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organizat\u2026"
+      },
+      {
+        "component": "title verify",
+        "consequence": "listings accepted without checking they are the same product",
+        "cause": "Error code: 429 - {'error': {'message': 'You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organizat\u2026"
+      },
+      {
+        "component": "price verify",
+        "consequence": "prices accepted without checking they are the buy-box amount",
+        "cause": "Error code: 429 - {'error': {'message': 'You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organizat\u2026"
+      },
+      {
+        "component": "price benchmark",
+        "consequence": "no reference prices, so no outlier rescrape",
+        "cause": "Error code: 429 - {'error': {'message': 'You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organizat\u2026"
+      },
+      {
+        "component": "trust scoring",
+        "consequence": "review-trust labels come from the heuristic, not the model",
+        "cause": "Error code: 429 - {'error': {'message': 'You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organizat\u2026"
+      }
+    ]
   }
 }
